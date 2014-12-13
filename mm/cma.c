@@ -37,6 +37,7 @@
 #include <linux/delay.h>
 #include <linux/kmemleak.h>
 #include <trace/events/cma.h>
+#include <linux/io.h>
 
 #include "cma.h"
 
@@ -333,9 +334,17 @@ int __init cma_declare_contiguous(phys_addr_t base,
 			}
 		}
 
+<<<<<<< HEAD
 		if (addr < highmem_start)
 			kmemleak_no_scan(__va(addr));
 
+=======
+		/*
+		 * kmemleak scans/reads tracked objects for pointers to other
+		 * objects but this address isn't mapped and accessible
+		 */
+		kmemleak_ignore(phys_to_virt(addr));
+>>>>>>> feb52e785e1f... mm/cma: make kmemleak ignore CMA regions
 		base = addr;
 	}
 
