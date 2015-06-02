@@ -1046,6 +1046,28 @@ static void audit_log_execve_info(struct audit_context *context,
 	if (!buf_head) {
 		audit_panic("out of memory for argv string");
 		return;
+	char arg_num_len_buf[12];
+	const char __user *tmp_p = p;
+	/* how many digits are in arg_num? 5 is the length of ' a=""' */
+	size_t arg_num_len = snprintf(arg_num_len_buf, 12, "%d", arg_num) + 5;
+	size_t len, len_left, to_send;
+	size_t max_execve_audit_len = MAX_EXECVE_AUDIT_LEN;
+	unsigned int i, has_cntl = 0, too_long = 0;
+	int ret;
+
+	/* strnlen_user includes the null we don't want to send */
+	len_left = len = strnlen_user(p, MAX_ARG_STRLEN) - 1;
+
+	/*
+	 * We just created this mm, if we can't find the strings
+	 * we just copied into it something is _very_ wrong. Similar
+	 * for strings that are too long, we should not have created
+	 * any.
+	 */
+	if (unlikely((len == 0) || len > MAX_ARG_STRLEN - 1)) {
+		WARN_ON(1);
+		send_sig(SIGKILL, current, 0);
+		return -1;
 	}
 	buf = buf_head;
 
