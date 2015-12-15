@@ -8465,29 +8465,6 @@ static void perf_event_exit_cpu_context(int cpu)
 
 static void perf_event_start_swclock(int cpu)
 {
-	struct perf_event_context *ctx;
-	struct pmu *pmu;
-	int idx;
-	struct perf_event *event, *tmp;
-
-	idx = srcu_read_lock(&pmus_srcu);
-	list_for_each_entry_rcu(pmu, &pmus, entry) {
-		if (pmu->events_across_hotplug) {
-			ctx = &per_cpu_ptr(pmu->pmu_cpu_context, cpu)->ctx;
-			list_for_each_entry_safe(event, tmp, &ctx->event_list,
-						 event_entry) {
-				if (event->attr.config ==
-				    PERF_COUNT_SW_CPU_CLOCK &&
-				    event->attr.type == PERF_TYPE_SOFTWARE)
-					cpu_clock_event_start(event, 0);
-			}
-		}
-	}
-	srcu_read_unlock(&pmus_srcu, idx);
-}
-
-static void perf_event_exit_cpu(int cpu)
-{
 	perf_event_exit_cpu_context(cpu);
 }
 #else
