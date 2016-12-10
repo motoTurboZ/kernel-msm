@@ -49,5 +49,6 @@ make -j10 -C $KERNELDIR M=$V4L2DRIVER
 find -name '*.ko' -exec cp -av {} $KERNELDIR/BUILT_GRIFFIN/modules/ \;
 
 cd $KERNELDIR
+rm $KERNELDIR/BUILT_GRIFFIN/modules/qca_cld_wlan.ko
 ${CROSS_COMPILE}strip --strip-unneeded $KERNELDIR/BUILT_GRIFFIN/modules/*
 ${CROSS_COMPILE}strip --strip-unneeded $KERNELDIR/BUILT_GRIFFIN/modules/qca_cld/*
