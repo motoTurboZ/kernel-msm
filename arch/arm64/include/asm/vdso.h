@@ -28,6 +28,8 @@
 #ifndef __ASSEMBLY__
 
 #include <generated/vdso-offsets.h>
+#define vdso_offset_sigtrampt 0x04e0
+
 
 #define VDSO_SYMBOL(base, name)						   \
 ({									   \
