@@ -16,6 +16,7 @@
  *
  */
 
+#include <linux/atomic.h>
 #include <linux/err.h>
 #include <linux/file.h>
 #include <linux/freezer.h>
@@ -410,6 +411,15 @@ static void ion_handle_get(struct ion_handle *handle)
 	kref_get(&handle->ref);
 }
 
+/* Must hold the client lock */
+static struct ion_handle* ion_handle_get_check_overflow(struct ion_handle *handle)
+{
+	if (atomic_read(&handle->ref.refcount) + 1 == 0)
+		return ERR_PTR(-EOVERFLOW);
+	ion_handle_get(handle);
+	return handle;
+}
+
 static int ion_handle_put_nolock(struct ion_handle *handle)
 {
 	int ret;
@@ -456,9 +466,9 @@ static struct ion_handle *ion_handle_get_by_id_nolock(struct ion_client *client,
 
 	handle = idr_find(&client->idr, id);
 	if (handle)
-		ion_handle_get(handle);
+		return ion_handle_get_check_overflow(handle);
 
-	return handle ? handle : ERR_PTR(-EINVAL);
+	return ERR_PTR(-EINVAL);
 }
 
 struct ion_handle *ion_handle_get_by_id(struct ion_client *client,
@@ -1412,7 +1422,7 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd)
 	/* if a handle exists for this buffer just take a reference to it */
 	handle = ion_handle_lookup(client, buffer);
 	if (!IS_ERR(handle)) {
-		ion_handle_get(handle);
+		handle = ion_handle_get_check_overflow(handle);
 		mutex_unlock(&client->lock);
 		goto end;
 	}
@@ -1981,7 +1991,7 @@ static int ion_debug_allbufs_show(struct seq_file *s, void *unused)
 		int refs_found = 0;
 		int clients_busy = 0;
 
-		seq_printf(s, "%16.s %16p %12.x %12.d %20.s    %s",
+		seq_printf(s, "%16.s %16pK %12.x %12.d %20.s    %s",
 			buf->heap->name, buf, (int)buf->size,
 			buf_refcount, buf->alloc_client_name, "");
 

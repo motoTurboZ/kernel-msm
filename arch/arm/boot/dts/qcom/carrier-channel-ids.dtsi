@@ -103,7 +103,7 @@
 		"3gb",	        /* 86 */
 		"tescoie",	/* 87 */
 		"altfr",	/* 88 */
-		"undefined",	/* 89 */
+		"3ie",	        /* 89 */
 		"undefined",	/* 90 */
 		"undefined",	/* 91 */
 		"undefined",	/* 92 */
@@ -211,9 +211,9 @@
 		"telstra",	/* 194 */
 		"vfau",	/* 195 */
 		"amzin",	/* 196 */
-		"undefined",	/* 197 */
-		"undefined",	/* 198 */
-		"undefined",	/* 199 */
+		"jioin",	/* 197 */
+		"airin",	/* 198 */
+		"retid",	/* 199 */
 		"undefined",	/* 200 */
 		"undefined",	/* 201 */
 		"undefined",	/* 202 */

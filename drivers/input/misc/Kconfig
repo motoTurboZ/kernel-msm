@@ -775,9 +775,26 @@ config INPUT_SX9310
 	help
 	  Say Y to enable the SAR detection application, if N here not to use the
 	  this SAR sensor.
+
+config SENSORS_AKM09911
+	tristate "AKM09911 3-axis electronic compass sensor driver"
+	depends on I2C
+	help
+	  Say Y here if you want to enable the akm09911 ecompass sensor
+	  driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called akm09911.
 endif
 
 config EPL8802
 	tristate "EPL8802 support"
 	help
 	proximity sensor driver.
+
+config EPL8802_ALSPS
+	tristate "EPL8802 support"
+	depends on I2C
+	default n
+	help
+	  proximity sensor driver for alsps usage.

@@ -2,7 +2,7 @@
  * Core MDSS framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -2410,6 +2410,10 @@ err_put:
 	dma_buf_put(mfd->fbmem_buf);
 fb_mmap_failed:
 	ion_free(mfd->fb_ion_client, mfd->fb_ion_handle);
+	mfd->fb_attachment = NULL;
+	mfd->fb_table = NULL;
+	mfd->fb_ion_handle = NULL;
+	mfd->fbmem_buf = NULL;
 	return rc;
 }
 
@@ -2964,9 +2968,10 @@ static int mdss_fb_release_all(struct fb_info *info, bool release_all)
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct mdss_fb_file_info *file_info = NULL, *temp_file_info = NULL;
 	struct file *file = info->file;
-	int ret = 0;
+	int blank, ret = 0;
 	bool node_found = false;
 	struct task_struct *task = current->group_leader;
+	struct fb_event event;
 
 	if (!mfd->ref_cnt) {
 		pr_info("try to close unopened fb %d! from pid:%d name:%s\n",
@@ -3032,13 +3037,22 @@ static int mdss_fb_release_all(struct fb_info *info, bool release_all)
 		 */
 		mdss_fb_set_backlight(mfd, 0);
 
+		blank = FB_BLANK_POWERDOWN;
+		event.info = info;
+		event.data = &blank;
+
+		fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
+
 		ret = mdss_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 			mfd->op_enable);
 		if (ret) {
+			fb_notifier_call_chain(FB_R_EARLY_EVENT_BLANK, &event);
 			pr_err("can't turn off fb%d! rc=%d current process=%s pid=%d\n",
 			      mfd->index, ret, task->comm, current->tgid);
 			return ret;
-		}
+		} else
+			fb_notifier_call_chain(FB_EVENT_BLANK, &event);
+
 		if (mfd->fb_ion_handle)
 			mdss_fb_free_fb_ion_memory(mfd);
 
@@ -4465,8 +4479,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_2;
 	}
 
-	sync_fence_install(rel_fence, rel_fen_fd);
-
 	ret = copy_to_user(buf_sync->rel_fen_fd, &rel_fen_fd, sizeof(int));
 	if (ret) {
 		pr_err("%s: copy_to_user failed\n", sync_pt_data->fence_name);
@@ -4503,8 +4515,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_3;
 	}
 
-	sync_fence_install(retire_fence, retire_fen_fd);
-
 	ret = copy_to_user(buf_sync->retire_fen_fd, &retire_fen_fd,
 			sizeof(int));
 	if (ret) {
@@ -4514,6 +4524,9 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		sync_fence_put(retire_fence);
 		goto buf_sync_err_3;
 	}
+
+	sync_fence_install(rel_fence, rel_fen_fd);
+	sync_fence_install(retire_fence, retire_fen_fd);
 
 skip_retire_fence:
 	mutex_unlock(&sync_pt_data->sync_mutex);

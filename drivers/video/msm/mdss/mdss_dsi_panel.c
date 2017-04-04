@@ -1009,7 +1009,8 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	if (ctrl->ds_registered)
 		mdss_dba_utils_video_on(pinfo->dba_data, pinfo);
-	if (pinfo->no_panel_read_support == false) {
+	if (pinfo->no_panel_read_support == false &&
+		pinfo->no_panel_on_read_support == false) {
 		mdss_dsi_get_pwr_mode(pdata, &pwr_mode, false);
 		if (pinfo->disp_on_check_val != pwr_mode) {
 			pr_err("%s: Display failure: read = 0x%x, expected = 0x%x\n",
@@ -2360,6 +2361,9 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 	pinfo->no_panel_read_support = of_property_read_bool(np,
 					"qcom,mdss-dsi-no-panel-read-support");
 
+	pinfo->no_panel_on_read_support = of_property_read_bool(np,
+					"qcom,mdss-dsi-no-panel-on-read-support");
+
 	if (ctrl->disp_en_gpio <= 0) {
 		ctrl->disp_en_gpio = of_get_named_gpio(
 			np,
@@ -2797,19 +2801,24 @@ static int mdss_panel_parse_display_timings(struct device_node *np,
 
 	timings_np = of_get_child_by_name(np, "qcom,mdss-dsi-display-timings");
 	if (!timings_np) {
-		struct dsi_panel_timing pt;
-		memset(&pt, 0, sizeof(struct dsi_panel_timing));
+		struct dsi_panel_timing *pt;
+
+		pt = kzalloc(sizeof(*pt), GFP_KERNEL);
+		if (!pt)
+			return -ENOMEM;
 
 		/*
 		 * display timings node is not available, fallback to reading
 		 * timings directly from root node instead
 		 */
 		pr_debug("reading display-timings from panel node\n");
-		rc = mdss_dsi_panel_timing_from_dt(np, &pt, panel_data);
+		rc = mdss_dsi_panel_timing_from_dt(np, pt, panel_data);
 		if (!rc) {
-			mdss_dsi_panel_config_res_properties(np, &pt,
+			mdss_dsi_panel_config_res_properties(np, pt,
 					panel_data, true);
-			rc = mdss_dsi_panel_timing_switch(ctrl, &pt.timing);
+			rc = mdss_dsi_panel_timing_switch(ctrl, &pt->timing);
+		} else {
+			kfree(pt);
 		}
 		return rc;
 	}
