@@ -13,6 +13,8 @@ fi
 cd $KERNELDIR/
 make -j10 || exit 1
 
+mkdir -p $KERNELDIR/BUILT_GRIFFIN/
+
 rm $KERNELDIR/BUILT_GRIFFIN/modules/*
 rm $KERNELDIR/BUILT_GRIFFIN/zImage
 
