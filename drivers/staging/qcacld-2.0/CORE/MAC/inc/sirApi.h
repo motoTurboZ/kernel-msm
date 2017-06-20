@@ -1722,15 +1722,6 @@ typedef struct sSirSmeDeauthCnf
     tSirMacAddr        peerMacAddr;
 } tSirSmeDeauthCnf, *tpSirSmeDeauthCnf;
 
-/* Definition for disconnect done indication */
-typedef struct sSirSmeDisConDoneInd {
-   tANI_U16           messageType;
-   tANI_U16           length;
-   tANI_U8            sessionId;
-   tSirResultCodes    reasonCode;
-   tSirMacAddr        peerMacAddr;
-} tSirSmeDisConDoneInd, *tpSirSmeDisConDoneInd;
-
 /// Definition for stop BSS request message
 typedef struct sSirSmeStopBssReq
 {
@@ -4477,7 +4468,6 @@ typedef struct sSirScanOffloadReq {
     tSirP2pScanType p2pScanType;
     tANI_U16 uIEFieldLen;
     tANI_U16 uIEFieldOffset;
-    uint32_t burst_scan_duration;
     tSirChannelList channelList;
     /*-----------------------------
       sSirScanOffloadReq....
@@ -5665,7 +5655,6 @@ struct wifi_epno_params
 	struct wifi_epno_network networks[];
 };
 
-#define SIR_PASSPOINT_LIST_MAX_NETWORKS 8
 #define SIR_PASSPOINT_REALM_LEN 256
 #define SIR_PASSPOINT_ROAMING_CONSORTIUM_ID_NUM 16
 #define SIR_PASSPOINT_PLMN_LEN 3
