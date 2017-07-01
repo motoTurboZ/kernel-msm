@@ -15,7 +15,10 @@ make -j10 || exit 1
 
 mkdir -p $KERNELDIR/BUILT_GRIFFIN/
 
+rm $KERNELDIR/BUILT_GRIFFIN/modules/qca_cld/*
+rm -R $KERNELDIR/BUILT_GRIFFIN/modules/qca_cld
 rm $KERNELDIR/BUILT_GRIFFIN/modules/*
+rm -R $KERNELDIR/BUILT_GRIFFIN/modules
 rm $KERNELDIR/BUILT_GRIFFIN/zImage
 
 if [ ! -f $KERNELDIR/arch/arm64/boot/zImage ];
