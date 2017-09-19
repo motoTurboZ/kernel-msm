@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -535,6 +535,7 @@ struct fg_chip {
 	bool			charge_done;
 	bool			resume_soc_lowered;
 	bool			vbat_low_irq_enabled;
+	bool			full_soc_irq_enabled;
 	bool			charge_full;
 	bool			hold_soc_while_full;
 	bool			input_present;
@@ -646,6 +647,7 @@ struct fg_chip {
 	struct notifier_block	fg_reboot;
 	bool			shutdown_in_process;
 	bool			nom_cap_unbound;
+	bool			low_batt_temp_comp;
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -677,6 +679,7 @@ struct fg_trans {
 	struct fg_chip *chip;
 	struct fg_log_buffer *log; /* log buffer */
 	u8 *data;	/* fg data that is read */
+	struct mutex memif_dfs_lock; /* Prevent thread concurrency */
 };
 
 struct fg_dbgfs {
@@ -1341,7 +1344,11 @@ static void fg_enable_irqs(struct fg_chip *chip, bool enable)
 	if (enable) {
 		enable_irq(chip->soc_irq[DELTA_SOC].irq);
 		enable_irq_wake(chip->soc_irq[DELTA_SOC].irq);
-		enable_irq(chip->soc_irq[FULL_SOC].irq);
+		if (!chip->full_soc_irq_enabled) {
+			enable_irq(chip->soc_irq[FULL_SOC].irq);
+			enable_irq_wake(chip->soc_irq[FULL_SOC].irq);
+			chip->full_soc_irq_enabled = true;
+		}
 		enable_irq(chip->batt_irq[BATT_MISSING].irq);
 		if (!chip->vbat_low_irq_enabled) {
 			enable_irq(chip->batt_irq[VBATT_LOW].irq);
@@ -1356,7 +1363,11 @@ static void fg_enable_irqs(struct fg_chip *chip, bool enable)
 	} else {
 		disable_irq_wake(chip->soc_irq[DELTA_SOC].irq);
 		disable_irq_nosync(chip->soc_irq[DELTA_SOC].irq);
-		disable_irq(chip->soc_irq[FULL_SOC].irq);
+		if (chip->full_soc_irq_enabled) {
+			disable_irq_wake(chip->soc_irq[FULL_SOC].irq);
+			disable_irq_nosync(chip->soc_irq[FULL_SOC].irq);
+			chip->full_soc_irq_enabled = false;
+		}
 		disable_irq(chip->batt_irq[BATT_MISSING].irq);
 		if (chip->vbat_low_irq_enabled) {
 			disable_irq_wake(chip->batt_irq[VBATT_LOW].irq);
@@ -2311,6 +2322,16 @@ static int get_sram_prop_now(struct fg_chip *chip, unsigned int type)
 	if (type == FG_DATA_BATT_ID)
 		return get_batt_id(fg_data[type].value,
 				fg_data[FG_DATA_BATT_ID_INFO].value);
+
+	if (type == FG_DATA_BATT_TEMP && chip->low_batt_temp_comp) {
+		int cool = settings[FG_MEM_SOFT_COLD].value;
+		int cold = settings[FG_MEM_HARD_COLD].value;
+		int temp = fg_data[type].value;
+
+		if (temp < 0)
+			temp += (-50) * (cool - temp) / (cool - cold);
+		return temp;
+	}
 
 	return fg_data[type].value;
 }
@@ -4059,6 +4080,13 @@ static void status_change_work(struct work_struct *work)
 			enable_irq_wake(chip->batt_irq[VBATT_LOW].irq);
 			chip->vbat_low_irq_enabled = true;
 		}
+
+		if (!chip->full_soc_irq_enabled) {
+			enable_irq(chip->soc_irq[FULL_SOC].irq);
+			enable_irq_wake(chip->soc_irq[FULL_SOC].irq);
+			chip->full_soc_irq_enabled = true;
+		}
+
 		if (!!(chip->wa_flag & PULSE_REQUEST_WA) && capacity == 100)
 			fg_configure_soc(chip);
 	} else if (chip->status == POWER_SUPPLY_STATUS_DISCHARGING) {
@@ -4067,6 +4095,12 @@ static void status_change_work(struct work_struct *work)
 			disable_irq_wake(chip->batt_irq[VBATT_LOW].irq);
 			disable_irq_nosync(chip->batt_irq[VBATT_LOW].irq);
 			chip->vbat_low_irq_enabled = false;
+		}
+
+		if (chip->full_soc_irq_enabled) {
+			disable_irq_wake(chip->soc_irq[FULL_SOC].irq);
+			disable_irq_nosync(chip->soc_irq[FULL_SOC].irq);
+			chip->full_soc_irq_enabled = false;
 		}
 	}
 	fg_cap_learning_check(chip);
@@ -4887,7 +4921,8 @@ static void dump_sram(struct work_struct *work)
 static void update_esr_value(struct work_struct *work)
 {
 	union power_supply_propval prop = {0, };
-	u64 esr_value;
+	u64 esr_value = 0;
+	u64 esr_readback = 0;
 	int rc = 0;
 	struct fg_chip *chip = container_of(work,
 				struct fg_chip,
@@ -4899,30 +4934,41 @@ static void update_esr_value(struct work_struct *work)
 	chip->batt_psy->get_property(chip->batt_psy,
 			POWER_SUPPLY_PROP_CHARGE_TYPE, &prop);
 
-	if (!chip->esr_strict_filter) {
-		if ((prop.intval == POWER_SUPPLY_CHARGE_TYPE_TAPER &&
-				chip->status == POWER_SUPPLY_STATUS_CHARGING) ||
-			(chip->status == POWER_SUPPLY_STATUS_FULL)) {
+	rc = fg_mem_read(chip, (u8 *)&esr_readback, MAXRSCHANGE_REG, 8,
+			ESR_VALUE_OFFSET, 0);
+	if (rc)
+		pr_err("read esr failed: rc = %d\n", rc);
+
+	if ((prop.intval == POWER_SUPPLY_CHARGE_TYPE_TAPER &&
+			chip->status == POWER_SUPPLY_STATUS_CHARGING) ||
+		(chip->status == POWER_SUPPLY_STATUS_FULL)) {
+		if (esr_readback != ESR_STRICT_VALUE) {
 			esr_value = ESR_STRICT_VALUE;
 			rc = fg_mem_write(chip, (u8 *)&esr_value,
-					MAXRSCHANGE_REG, 8,
-					ESR_VALUE_OFFSET, 0);
+				MAXRSCHANGE_REG, 8, ESR_VALUE_OFFSET, 0);
 			if (rc)
-				pr_err("failed to write strict ESR value rc=%d\n",
-					rc);
-			else
+				pr_err("write strict ESR value rc=%d\n", rc);
+			else {
 				chip->esr_strict_filter = true;
+				pr_info("ESR: update esr from 0x%llx to 0x%llx\n",
+						esr_readback, esr_value);
+			}
 		}
 	} else if ((prop.intval != POWER_SUPPLY_CHARGE_TYPE_TAPER &&
-				chip->status == POWER_SUPPLY_STATUS_CHARGING) ||
-			(chip->status == POWER_SUPPLY_STATUS_DISCHARGING)) {
-		esr_value = ESR_DEFAULT_VALUE;
-		rc = fg_mem_write(chip, (u8 *)&esr_value, MAXRSCHANGE_REG, 8,
-				ESR_VALUE_OFFSET, 0);
-		if (rc)
-			pr_err("failed to write default ESR value rc=%d\n", rc);
-		else
-			chip->esr_strict_filter = false;
+			chip->status == POWER_SUPPLY_STATUS_CHARGING) ||
+		(chip->status == POWER_SUPPLY_STATUS_DISCHARGING)) {
+		if (esr_readback != ESR_DEFAULT_VALUE) {
+			esr_value = ESR_DEFAULT_VALUE;
+			rc = fg_mem_write(chip, (u8 *)&esr_value,
+				MAXRSCHANGE_REG, 8, ESR_VALUE_OFFSET, 0);
+			if (rc)
+				pr_err("write default ESR rc=%d\n", rc);
+			else {
+				chip->esr_strict_filter = false;
+				pr_info("ESR: update esr from 0x%llx to 0x%llx\n",
+						esr_readback, esr_value);
+			}
+		}
 	}
 }
 
@@ -6654,7 +6700,7 @@ done:
 	}
 	fg_mem_release(chip);
 
-	chip->nom_cap_unbound = ((bcap_uah_2b(buffer) > 4500000) ||
+	chip->nom_cap_unbound = ((bcap_uah_2b(buffer) > 5100000) ||
 				 (bcap_uah_2b(buffer) < 1500000));
 
 	if (chip->nom_cap_unbound) {
@@ -7334,6 +7380,9 @@ static int fg_of_init(struct fg_chip *chip)
 	chip->batt_info_restore = of_property_read_bool(node,
 					"qcom,fg-restore-batt-info");
 
+	chip->low_batt_temp_comp = of_property_read_bool(node,
+					"qcom,low-batt-temp-comp");
+
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("restore: %d validate_by_ocv: %d range_pct: %d\n",
 			chip->batt_info_restore, fg_batt_valid_ocv,
@@ -7700,6 +7749,7 @@ static int fg_memif_data_open(struct inode *inode, struct file *file)
 	trans->addr = dbgfs_data.addr;
 	trans->chip = dbgfs_data.chip;
 	trans->offset = trans->addr;
+	mutex_init(&trans->memif_dfs_lock);
 
 	file->private_data = trans;
 	return 0;
@@ -7718,6 +7768,7 @@ static int fg_memif_dfs_close(struct inode *inode, struct file *file)
 
 	if (trans && trans->log && trans->data) {
 		file->private_data = NULL;
+		mutex_destroy(&trans->memif_dfs_lock);
 		kfree(trans->log);
 		kfree(trans->data);
 		kfree(trans);
@@ -7875,10 +7926,13 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 	size_t ret;
 	size_t len;
 
+	mutex_lock(&trans->memif_dfs_lock);
 	/* Is the the log buffer empty */
 	if (log->rpos >= log->wpos) {
-		if (get_log_data(trans) <= 0)
-			return 0;
+		if (get_log_data(trans) <= 0) {
+			len = 0;
+			goto unlock_mutex;
+		}
 	}
 
 	len = min(count, log->wpos - log->rpos);
@@ -7886,7 +7940,8 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 	ret = copy_to_user(buf, &log->data[log->rpos], len);
 	if (ret == len) {
 		pr_err("error copy sram register values to user\n");
-		return -EFAULT;
+		len = -EFAULT;
+		goto unlock_mutex;
 	}
 
 	/* 'ret' is the number of bytes not copied */
@@ -7894,6 +7949,9 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 
 	*ppos += len;
 	log->rpos += len;
+
+unlock_mutex:
+	mutex_unlock(&trans->memif_dfs_lock);
 	return len;
 }
 
@@ -7914,14 +7972,20 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 	int cnt = 0;
 	u8  *values;
 	size_t ret = 0;
+	char *kbuf;
+	u32 offset;
 
 	struct fg_trans *trans = file->private_data;
-	u32 offset = trans->offset;
+
+	mutex_lock(&trans->memif_dfs_lock);
+	offset = trans->offset;
 
 	/* Make a copy of the user data */
-	char *kbuf = kmalloc(count + 1, GFP_KERNEL);
-	if (!kbuf)
-		return -ENOMEM;
+	kbuf = kmalloc(count + 1, GFP_KERNEL);
+	if (!kbuf) {
+		ret = -ENOMEM;
+		goto unlock_mutex;
+	}
 
 	ret = copy_from_user(kbuf, buf, count);
 	if (ret == count) {
@@ -7960,6 +8024,8 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 
 free_buf:
 	kfree(kbuf);
+unlock_mutex:
+	mutex_unlock(&trans->memif_dfs_lock);
 	return ret;
 }
 

@@ -572,6 +572,11 @@ static void msm_vfe40_read_irq_status(struct vfe_device *vfe_dev,
 
 	*irq_status0 &= vfe_dev->irq0_mask;
 	*irq_status1 &= vfe_dev->irq1_mask;
+	if (*irq_status0 &&
+		(*irq_status0 == msm_camera_io_r(vfe_dev->vfe_base + 0x38))) {
+		msm_camera_io_w(*irq_status0, vfe_dev->vfe_base + 0x30);
+		msm_camera_io_w_mb(1, vfe_dev->vfe_base + 0x24);
+	}
 
 	if (*irq_status1 & (1 << 0)) {
 		vfe_dev->error_info.camif_status =
@@ -1015,8 +1020,8 @@ static int msm_vfe40_start_fetch_engine(struct vfe_device *vfe_dev,
 		rc = vfe_dev->buf_mgr->ops->get_buf_by_index(
 			vfe_dev->buf_mgr, bufq_handle, fe_cfg->buf_idx, &buf);
 		if (rc < 0 || !buf) {
-			pr_err("%s: No fetch buffer rc= %d buf= %p\n",
-				__func__, rc, buf);
+			pr_err("%s: No fetch buffer rc= %d\n",
+				__func__, rc);
 			return -EINVAL;
 		}
 		mapped_info = buf->mapped_info[0];
@@ -1072,7 +1077,7 @@ static int msm_vfe40_start_fetch_engine_multi_pass(struct vfe_device *vfe_dev,
 		rc = vfe_dev->buf_mgr->ops->get_buf_by_index(
 			vfe_dev->buf_mgr, bufq_handle, fe_cfg->buf_idx, &buf);
 		if (rc < 0 || !buf) {
-			pr_err("%s: No fetch buffer rc= %d buf= %p\n",
+			pr_err("%s: No fetch buffer rc= %d buf= %pK\n",
 				__func__, rc, buf);
 			return -EINVAL;
 		}
@@ -1439,7 +1444,7 @@ static void msm_vfe40_update_camif_state(struct vfe_device *vfe_dev,
 		msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x30);
 		msm_camera_io_w_mb(0x81, vfe_dev->vfe_base + 0x34);
 		msm_camera_io_w_mb(0x1, vfe_dev->vfe_base + 0x24);
-		msm_vfe40_config_irq(vfe_dev, 0xF7, 0x81,
+		msm_vfe40_config_irq(vfe_dev, 0x17, 0x81,
 				MSM_ISP_IRQ_ENABLE);
 		msm_camera_io_w_mb(0x140000, vfe_dev->vfe_base + 0x318);
 
@@ -1841,7 +1846,8 @@ static int msm_vfe40_axi_restart(struct vfe_device *vfe_dev,
 	/* Start AXI */
 	msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x2C0);
 
-	msm_vfe40_config_irq(vfe_dev, vfe_dev->recovery_irq0_mask,
+	if (vfe_dev->recovery_irq0_mask || vfe_dev->recovery_irq1_mask)
+		msm_vfe40_config_irq(vfe_dev, vfe_dev->recovery_irq0_mask,
 		vfe_dev->recovery_irq1_mask, MSM_ISP_IRQ_SET);
 
 	vfe_dev->hw_info->vfe_ops.core_ops.reg_update(vfe_dev, VFE_SRC_MAX);
@@ -2259,6 +2265,7 @@ struct msm_vfe_hardware_info vfe40_hw_info = {
 			.process_stats_irq = msm_isp_process_stats_irq,
 			.process_epoch_irq = msm_vfe40_process_epoch_irq,
 			.config_irq = msm_vfe40_config_irq,
+			.process_eof_irq = msm_isp47_process_eof_irq,
 		},
 		.axi_ops = {
 			.reload_wm = msm_vfe40_axi_reload_wm,

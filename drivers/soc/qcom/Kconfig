@@ -304,6 +304,16 @@ config MSM_CACHE_M4M_ERP64_PANIC_ON_UE
          Say 'Y' here to cause kernel panic when uncorrectable cache/M4M errors
          are detected.
 
+config MSM_L2_IA_DEBUG
+       bool "Enable MSM L2 Indirect Access Debug"
+       depends on DEBUG_FS
+       default n
+       help
+         This option enables L2 indirect access debug
+         capability. It exposes L2 indirect access
+         debugfs interface to get/set data, address,
+         and target cpus.
+
 config MSM_RPM_SMD
 	bool "RPM driver using SMD protocol"
 	help
@@ -725,6 +735,14 @@ config POTTER_DTB
 	  Only include Potter specific DTBs to limit the number that
 	  get built during kernel compilation.
 
+config SANDERS_DTB
+        depends on ARCH_MSM
+        default n
+        bool "Sanders DTBs"
+        help
+          Only include Sanders specific DTBs to limit the number that
+          get built during kernel compilation.
+
 config ADDISON_DTB
 	depends on ARCH_MSM
 	default n
@@ -747,6 +765,30 @@ config CEDRIC_DTB
 	help
 	  Only include Cedric specific DTBs to limit the number that
 	  get built during kernel compilation.
+
+config MONTANA_DTB
+	depends on ARCH_MSM
+	default n
+	bool "Montana DTBs"
+	help
+	  Only include Montana specific DTBs to limit the number that
+	  get built during kernel compilation.
+
+config PERRY_DTB
+	depends on ARCH_MSM
+	default n
+	bool "Perry DTBs"
+	help
+	  Only include Perry specific DTBs to limit the number that
+	  get built during kernel compilation.
+
+config OWENS_DTB
+        depends on ARCH_MSM
+        default n
+        bool "Owens DTBs"
+        help
+          Only include Owens specific DTBs to limit the number that
+          get built during kernel compilation.
 
 config MSM_SECURE_BUFFER
 	bool "Helper functions for securing buffers through TZ"

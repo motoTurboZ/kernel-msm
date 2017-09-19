@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, Motorola Mobility, Inc.
+/* Copyright (c) 2015-2017, Motorola Mobility, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,18 +11,24 @@
  *
  */
 #include <linux/firmware.h>
+#include <linux/platform_device.h>
+#include <linux/module.h>
+#include <linux/of_platform.h>
 #include <sound/soc.h>
 #include <sound/core.h>
 #include <sound/q6afe-v2.h>
 #include <sound/ospl2xx.h>
-#ifdef CONFIG_SND_SOC_MARLEY
-#include <linux/mfd/arizona/core.h>
-#include "../codecs/marley.h"
-#include "../codecs/arizona_marley.h"
-#endif
 
-#define AFE_RX_PORT_ID AFE_PORT_ID_SLIMBUS_MULTI_CHAN_0_RX
-#define AFE_TX_PORT_ID AFE_PORT_ID_SLIMBUS_MULTI_CHAN_1_TX
+/*
+ * QDSP internal tune index and port config reading
+ */
+#define MAX_TUNE_COUNT 4
+static uint32_t ospl_tune_index[MAX_TUNE_COUNT] = {0, 1, 2, 3};
+static uint32_t AFE_RX_PORT_ID = AFE_PORT_ID_SLIMBUS_MULTI_CHAN_0_RX;
+static uint32_t AFE_TX_PORT_ID = AFE_PORT_ID_SLIMBUS_MULTI_CHAN_1_TX;
+static bool feedback_on_left;
+static bool feedback_on_right;
+static bool ospl_volume_control;
 
 /*
  * external configuration string reading
@@ -42,24 +48,19 @@ static int ext_config_loaded;
 static const struct firmware
 		*ospl2xx_config[ARRAY_SIZE(ospl2xx_ext_config_tables)];
 
+static struct workqueue_struct *ospl2xx_wq;
+static struct work_struct ospl2xx_init_work;
+static struct platform_device *spdev;
+
 static DEFINE_MUTEX(lr_lock);
 static void ospl2xx_load_config(struct work_struct *work)
 {
 	int i, ret;
-	struct marley_priv *marley =
-		container_of(work, struct marley_priv, ospl2xx_config);
-	struct arizona_priv *priv = &marley->core;
-	struct arizona *arizona = priv->arizona;
-
-	if (arizona == NULL) {
-		pr_debug("%s: can't load external configuration\n", __func__);
-		return;
-	}
 
 	mutex_lock(&lr_lock);
 	for (i = 0; i < ARRAY_SIZE(ospl2xx_ext_config_tables); i++) {
 		ret = request_firmware(&ospl2xx_config[i],
-			ospl2xx_ext_config_tables[i], arizona->dev);
+			ospl2xx_ext_config_tables[i], &spdev->dev);
 		if (ret ||
 		    ospl2xx_config[i]->data == NULL ||
 		    ospl2xx_config[i]->size <= 0) {
@@ -408,6 +409,7 @@ int ospl2xx_afe_get_param(uint32_t param_id)
 	case PARAM_ID_OPALUM_RX_EXC_MODEL:
 	case PARAM_ID_OPLAUM_RX_TEMPERATURE:
 	case PARAM_ID_OPALUM_RX_CURRENT_PARAM_SET:
+	case PARAM_ID_OPALUM_RX_VOLUME_CONTROL:
 	case PARAM_ID_OPALUM_TX_ENABLE:
 	case PARAM_ID_OPALUM_TX_CURRENT_PARAM_SET:
 		config->param.payload_size +=
@@ -518,22 +520,24 @@ error_return:
 
 static int ospl2xx_update_rx_int_config(void)
 {
-	pr_debug("%s: set configuration index = %d\n",
-		__func__, int_rxconfig);
+	pr_debug("%s: set configuration index = %d, qdsp index = %d\n",
+		__func__, int_rxconfig, ospl_tune_index[int_rxconfig]);
 
 	ospl2xx_afe_set_single_param(
-		PARAM_ID_OPALUM_RX_SET_USE_CASE, int_rxconfig);
+		PARAM_ID_OPALUM_RX_SET_USE_CASE,
+		ospl_tune_index[int_rxconfig]);
 
 	return 0;
 }
 
 static int ospl2xx_update_tx_int_config(void)
 {
-	pr_debug("%s: set configuration index = %d\n",
-		__func__, int_txconfig);
+	pr_debug("%s: set configuration index = %d, qdsp index = %d\n",
+		__func__, int_txconfig, ospl_tune_index[int_txconfig]);
 
 	ospl2xx_afe_set_single_param(
-		PARAM_ID_OPALUM_TX_SET_USE_CASE, int_txconfig);
+		PARAM_ID_OPALUM_TX_SET_USE_CASE,
+		ospl_tune_index[int_txconfig]);
 
 	return 0;
 }
@@ -561,6 +565,7 @@ static int32_t ospl2xx_afe_callback(struct apr_client_data *data)
 			case PARAM_ID_OPALUM_RX_EXC_MODEL:
 			case PARAM_ID_OPLAUM_RX_TEMPERATURE:
 			case PARAM_ID_OPALUM_RX_CURRENT_PARAM_SET:
+			case PARAM_ID_OPALUM_RX_VOLUME_CONTROL:
 			case PARAM_ID_OPALUM_TX_ENABLE:
 			case PARAM_ID_OPALUM_TX_F0_CALIBRATION_VALUE:
 			case PARAM_ID_OPALUM_TX_TEMP_MEASUREMENT_VALUE:
@@ -640,7 +645,8 @@ static int ospl2xx_rx_int_config_get(struct snd_kcontrol *kcontrol,
 	ospl2xx_afe_set_callback(ospl2xx_afe_callback);
 	ospl2xx_afe_get_param(PARAM_ID_OPALUM_RX_CURRENT_PARAM_SET);
 
-	ucontrol->value.integer.value[0] = afe_cb_payload32_data[0];
+	ucontrol->value.integer.value[0] =
+			afe_cb_payload32_data[0] - ospl_tune_index[0];
 	mutex_unlock(&mr_lock);
 
 	return 0;
@@ -824,6 +830,35 @@ static int ospl2xx_rx_put_temperature(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+/* PARAM_ID_OPALUM_RX_VOLUME_CONTROL */
+static int ospl2xx_rx_get_volume(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	mutex_lock(&mr_lock);
+	ospl2xx_afe_set_callback(ospl2xx_afe_callback);
+	ospl2xx_afe_get_param(PARAM_ID_OPALUM_RX_VOLUME_CONTROL);
+
+	ucontrol->value.integer.value[0] = afe_cb_payload32_data[0];
+	mutex_unlock(&mr_lock);
+
+	return 0;
+}
+static int ospl2xx_rx_put_volume(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	int32_t volume = ucontrol->value.integer.value[0];
+
+	if (volume > 0x7FFFFFFF || volume < 0)
+		volume = 0x7FFFFFFF;
+
+	pr_debug("%s, volume[%d]\n", __func__, volume);
+
+	ospl2xx_afe_set_single_param(
+		PARAM_ID_OPALUM_RX_VOLUME_CONTROL, volume);
+
+	return 0;
+}
+
 /* PARAM_ID_OPALUM_RX_TEMP_CAL_DATA */
 static int ospl2xx_rx_put_temp_cal(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
@@ -832,9 +867,17 @@ static int ospl2xx_rx_put_temp_cal(struct snd_kcontrol *kcontrol,
 	int32_t count       = ucontrol->value.integer.value[1];
 	int32_t temperature = ucontrol->value.integer.value[2];
 
-	mutex_lock(&mr_lock);
 	pr_debug("%s, acc[%d], cnt[%d], tmpr[%d]\n", __func__,
 			accumulated, count, temperature);
+	pr_debug("%s, left_feedback[%d], right_feedback[%d], tx[%d], rx[%d]\n",
+			__func__, feedback_on_left, feedback_on_right,
+			AFE_TX_PORT_ID, AFE_RX_PORT_ID);
+
+	mutex_lock(&mr_lock);
+	if (feedback_on_left || feedback_on_right)
+		afe_spk_prot_feed_back_cfg(AFE_TX_PORT_ID, AFE_RX_PORT_ID,
+					feedback_on_left,
+					feedback_on_right, 1);
 	ospl2xx_afe_set_tri_param(
 			PARAM_ID_OPALUM_RX_TEMP_CAL_DATA,
 			accumulated, count, temperature);
@@ -1046,16 +1089,14 @@ static int ospl2xx_reload_ext_put(struct snd_kcontrol *kcontrol,
 {
 	int i = 0;
 	int reload = ucontrol->value.integer.value[0];
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct marley_priv *marley = snd_soc_codec_get_drvdata(codec);
 
 	if (reload && ext_config_loaded) {
 		pr_debug("re-loading configuration files\n");
 		for (i = 0; i < ARRAY_SIZE(ospl2xx_ext_config_tables); i++)
 			release_firmware(ospl2xx_config[i]);
 
-		INIT_WORK(&marley->ospl2xx_config, ospl2xx_load_config);
-		queue_work(marley->ospl2xx_wq, &marley->ospl2xx_config);
+		INIT_WORK(&ospl2xx_init_work, ospl2xx_load_config);
+		queue_work(ospl2xx_wq, &ospl2xx_init_work);
 	}
 
 	return 0;
@@ -1125,6 +1166,12 @@ static const struct snd_kcontrol_new ospl2xx_params_controls[] = {
 		ospl2xx_audio_mode_get, ospl2xx_audio_mode_put),
 };
 
+static const struct snd_kcontrol_new ospl2xx_volume_controls[] = {
+	/* GET,PUT */ SOC_SINGLE_EXT("OSPL Rx Volume",
+		SND_SOC_NOPM, 0, 0x7FFFFFFF, 0,
+		ospl2xx_rx_get_volume, ospl2xx_rx_put_volume),
+};
+
 /*
  * ospl2xx initialization
  * - register mixer controls
@@ -1133,17 +1180,121 @@ static const struct snd_kcontrol_new ospl2xx_params_controls[] = {
 int ospl2xx_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec;
-	struct marley_priv *marley = snd_soc_codec_get_drvdata(codec);
 
 	snd_soc_add_codec_controls(codec, ospl2xx_params_controls,
 			ARRAY_SIZE(ospl2xx_params_controls));
 
-	marley->ospl2xx_wq = create_singlethread_workqueue("ospl2xx");
-	if (marley->ospl2xx_wq == NULL)
+	if (ospl_volume_control) {
+		snd_soc_add_codec_controls(codec, ospl2xx_volume_controls,
+			ARRAY_SIZE(ospl2xx_volume_controls));
+		pr_info("%s: ospl volume control is enabled\n", __func__);
+	}
+
+	ospl2xx_wq = create_singlethread_workqueue("ospl2xx");
+	if (ospl2xx_wq == NULL)
 		return -ENOMEM;
 
-	INIT_WORK(&marley->ospl2xx_config, ospl2xx_load_config);
-	queue_work(marley->ospl2xx_wq, &marley->ospl2xx_config);
+	INIT_WORK(&ospl2xx_init_work, ospl2xx_load_config);
+	queue_work(ospl2xx_wq, &ospl2xx_init_work);
 
 	return 0;
 }
+
+static int ospl2xx_probe(struct platform_device *pdev)
+{
+	int i, ret = 0;
+	uint32_t num_entries = 0;
+	uint32_t *val_array = NULL;
+
+	ret = of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+	if (ret)
+		goto err;
+
+	num_entries = of_property_count_u32_elems(pdev->dev.of_node,
+					"mmi,ospl-tune-index");
+	if (num_entries > 0) {
+		val_array = kcalloc(num_entries, sizeof(uint32_t), GFP_KERNEL);
+		if (!val_array) {
+			pr_err("%s malloc fail at ospl-tune-index\n", __func__);
+			ret = -ENOMEM;
+			goto err;
+		}
+		ret = of_property_read_u32_array(pdev->dev.of_node,
+					"mmi,ospl-tune-index",
+					val_array, num_entries);
+		if (ret < 0) {
+			pr_err("%s failed to load ospl-tune-index\n", __func__);
+			kfree(val_array);
+			goto err;
+		}
+		for (i = 0 ; i < num_entries; i++)
+			ospl_tune_index[i] = val_array[i];
+		kfree(val_array);
+	}
+
+	ret = of_property_read_u32_index(pdev->dev.of_node,
+					"mmi,ospl-afe-port-id", 0,
+					&AFE_RX_PORT_ID);
+	if (ret) {
+		pr_err("%s couldn't read ospl afe rx port id\n", __func__);
+		goto err;
+	}
+
+	ret = of_property_read_u32_index(pdev->dev.of_node,
+					"mmi,ospl-afe-port-id", 1,
+					&AFE_TX_PORT_ID);
+	if (ret) {
+		pr_err("%s couldn't read ospl afe tx port id\n", __func__);
+		goto err;
+	}
+
+	feedback_on_left = of_property_read_bool(pdev->dev.of_node,
+					"mmi,ospl-left-feedback");
+	feedback_on_right = of_property_read_bool(pdev->dev.of_node,
+					"mmi,ospl-right-feedback");
+
+	ospl_volume_control = of_property_read_bool(pdev->dev.of_node,
+					"mmi,ospl-volume-control");
+
+err:
+	spdev = pdev;
+	return ret;
+}
+
+static int ospl2xx_remove(struct platform_device *pdev)
+{
+	if (ospl2xx_wq)
+		destroy_workqueue(ospl2xx_wq);
+
+	return 0;
+}
+
+static const struct of_device_id ospl2xx_of_match[] = {
+	{ .compatible = "mmi,ospl2xx" },
+	{  },
+};
+MODULE_DEVICE_TABLE(of, ospl2xx_of_match);
+
+static struct platform_driver ospl2xx_driver = {
+	.probe		= ospl2xx_probe,
+	.remove		= ospl2xx_remove,
+	.driver         = {
+		.name   = "ospl2xx",
+		.of_match_table	= ospl2xx_of_match,
+	},
+};
+
+static int __init ospl2xx_drv_init(void)
+{
+	return platform_driver_register(&ospl2xx_driver);
+}
+module_init(ospl2xx_drv_init);
+
+static void __exit ospl2xx_drv_exit(void)
+{
+	platform_driver_unregister(&ospl2xx_driver);
+}
+module_exit(ospl2xx_drv_exit);
+
+MODULE_DESCRIPTION("ASoC OSPL interface driver");
+MODULE_AUTHOR("Yoon (Seungyoon) Lee, Motorola Mobility Inc, <yoon@motorola.com>");

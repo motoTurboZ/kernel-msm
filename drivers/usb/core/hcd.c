@@ -1643,7 +1643,7 @@ int usb_hcd_unlink_urb (struct urb *urb, int status)
 		if (retval == 0)
 			retval = -EINPROGRESS;
 		else if (retval != -EIDRM && retval != -EBUSY)
-			dev_dbg(&udev->dev, "hcd_unlink_urb %p fail %d\n",
+			dev_dbg(&udev->dev, "hcd_unlink_urb %pK fail %d\n",
 					urb, retval);
 		usb_put_dev(udev);
 	}
@@ -1812,7 +1812,7 @@ rescan:
 		/* kick hcd */
 		unlink1(hcd, urb, -ESHUTDOWN);
 		dev_dbg (hcd->self.controller,
-			"shutdown urb %p ep%d%s%s\n",
+			"shutdown urb %pK ep%d%s%s\n",
 			urb, usb_endpoint_num(&ep->desc),
 			is_in ? "in" : "out",
 			({	char *s;
@@ -2154,7 +2154,64 @@ int usb_hcd_get_frame_number (struct usb_device *udev)
 	return hcd->driver->get_frame_number (hcd);
 }
 
+int usb_hcd_sec_event_ring_setup(struct usb_device *udev,
+	unsigned intr_num)
+{
+	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
+
+	if (!HCD_RH_RUNNING(hcd))
+		return 0;
+
+	return hcd->driver->sec_event_ring_setup(hcd, intr_num);
+}
+
+int usb_hcd_sec_event_ring_cleanup(struct usb_device *udev,
+	unsigned intr_num)
+{
+	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
+
+	if (!HCD_RH_RUNNING(hcd))
+		return 0;
+
+	return hcd->driver->sec_event_ring_cleanup(hcd, intr_num);
+}
+
 /*-------------------------------------------------------------------------*/
+
+dma_addr_t
+usb_hcd_get_sec_event_ring_dma_addr(struct usb_device *udev,
+	unsigned intr_num)
+{
+	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
+
+	if (!HCD_RH_RUNNING(hcd))
+		return 0;
+
+	return hcd->driver->get_sec_event_ring_dma_addr(hcd, intr_num);
+}
+
+dma_addr_t
+usb_hcd_get_dcba_dma_addr(struct usb_device *udev)
+{
+	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
+
+	if (!HCD_RH_RUNNING(hcd))
+		return 0;
+
+	return hcd->driver->get_dcba_dma_addr(hcd, udev);
+}
+
+dma_addr_t
+usb_hcd_get_xfer_ring_dma_addr(struct usb_device *udev,
+		struct usb_host_endpoint *ep)
+{
+	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
+
+	if (!HCD_RH_RUNNING(hcd))
+		return 0;
+
+	return hcd->driver->get_xfer_ring_dma_addr(hcd, udev, ep);
+}
 
 #ifdef	CONFIG_PM
 
@@ -2687,7 +2744,6 @@ int usb_add_hcd(struct usb_hcd *hcd,
 		hcd->authorized_default = hcd->wireless ? 0 : 1;
 	else
 		hcd->authorized_default = authorized_default;
-	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 
 	/* HC is in reset state, but accessible.  Now do the one-time init,
 	 * bottom up so that hcds can customize the root hubs before hub_wq
@@ -2774,6 +2830,7 @@ int usb_add_hcd(struct usb_hcd *hcd,
 		goto err_hcd_driver_start;
 	}
 
+	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 	/* starting here, usbcore will pay attention to this root hub */
 	if ((retval = register_root_hub(hcd)) != 0)
 		goto err_register_root_hub;
@@ -2868,6 +2925,9 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 #ifdef CONFIG_PM_RUNTIME
 	cancel_work_sync(&hcd->wakeup_work);
 #endif
+
+	/* handle any pending hub events before XHCI stops */
+	usb_flush_hub_wq();
 
 	mutex_lock(&usb_bus_list_lock);
 	usb_disconnect(&rhdev);		/* Sets rhdev to NULL */

@@ -690,7 +690,6 @@ static void ffs_user_copy_worker(struct work_struct *work)
 
 	usb_ep_free_request(io_data->ep, io_data->req);
 
-	io_data->kiocb->private = NULL;
 	if (io_data->read)
 		kfree(io_data->iovec);
 	kfree(io_data->buf);
@@ -1580,14 +1579,14 @@ static void ffs_data_clear(struct ffs_data *ffs)
 {
 	ENTER();
 
-	pr_debug("%s: ffs->gadget= %p, ffs->flags= %lu\n", __func__,
+	pr_debug("%s: ffs->gadget= %pK, ffs->flags= %lu\n", __func__,
 			ffs->gadget, ffs->flags);
 
 	ffs_closed(ffs);
 
 	/* Dump ffs->gadget and ffs->flags */
 	if (ffs->gadget)
-		pr_err("%s: ffs:%p ffs->gadget= %p, ffs->flags= %lu\n",
+		pr_err("%s: ffs:%pK ffs->gadget= %pK, ffs->flags= %lu\n",
 				__func__, ffs, ffs->gadget, ffs->flags);
 	BUG_ON(ffs->gadget);
 
@@ -3578,6 +3577,8 @@ static void ffs_closed(struct ffs_data *ffs)
 	    || !atomic_read(&opts->func_inst.group.cg_item.ci_kref.refcount))
 		goto done;
 
+	unregister_gadget_item(ffs_obj->opts->
+			       func_inst.group.cg_item.ci_parent->ci_parent);
 done:
 	ffs_dev_unlock();
 }

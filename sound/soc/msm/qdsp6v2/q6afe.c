@@ -1011,7 +1011,7 @@ static int afe_spk_prot_prepare(int src_port, int dst_port, int param_id,
 		goto fail_cmd;
 	}
 	if (atomic_read(&this_afe.status) > 0) {
-		pr_err("%s: config cmd failed [%s]\n",
+		pr_debug("%s: config cmd failed [%s]\n",
 			__func__, adsp_err_get_err_str(
 			atomic_read(&this_afe.status)));
 		ret = adsp_err_get_lnx_err_code(
@@ -1354,7 +1354,7 @@ static int afe_send_port_topology_id(u16 port_id)
 
 	ret = afe_apr_send_pkt(&config, &this_afe.wait[index]);
 	if (ret) {
-		pr_err("%s: AFE set topology id enable for port 0x%x failed %d\n",
+		pr_debug("%s: AFE set topology id enable for port 0x%x failed %d\n",
 			__func__, port_id, ret);
 		goto done;
 	}
@@ -4314,7 +4314,7 @@ static ssize_t afe_debug_write(struct file *filp,
 
 	lbuf[cnt] = '\0';
 
-	if (!strncmp(lb_str, "afe_loopback", 12)) {
+	if (!strcmp(lb_str, "afe_loopback")) {
 		rc = afe_get_parameters(lbuf, param, 3);
 		if (!rc) {
 			pr_info("%s: %lu %lu %lu\n", lb_str, param[0], param[1],
@@ -4343,7 +4343,7 @@ static ssize_t afe_debug_write(struct file *filp,
 			rc = -EINVAL;
 		}
 
-	} else if (!strncmp(lb_str, "afe_loopback_gain", 17)) {
+	} else if (!strcmp(lb_str, "afe_loopback_gain")) {
 		rc = afe_get_parameters(lbuf, param, 2);
 		if (!rc) {
 			pr_info("%s: %s %lu %lu\n",
@@ -6232,6 +6232,7 @@ static int afe_map_cal_data(int32_t cal_type,
 	}
 
 
+	mutex_lock(&this_afe.afe_cmd_lock);
 	atomic_set(&this_afe.mem_map_cal_index, cal_index);
 	ret = afe_cmd_memory_map(cal_block->cal_data.paddr,
 			cal_block->map_data.map_size);
@@ -6244,10 +6245,12 @@ static int afe_map_cal_data(int32_t cal_type,
 			__func__,
 			&cal_block->cal_data.paddr,
 			cal_block->map_data.map_size);
+		mutex_unlock(&this_afe.afe_cmd_lock);
 		goto done;
 	}
 	cal_block->map_data.q6map_handle = atomic_read(&this_afe.
 		mem_map_cal_handles[cal_index]);
+	mutex_unlock(&this_afe.afe_cmd_lock);
 done:
 	return ret;
 }

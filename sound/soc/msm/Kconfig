@@ -111,7 +111,7 @@ config SND_SOC_APQ8084
 	 DAI-links.
 
 config SND_SOC_OPALUM
-	tristate
+	tristate "Opalum Speaker Protection"
 	default n
 	help
 	 To add support for Opalum Speaker Protection Library.
@@ -201,9 +201,7 @@ config SND_SOC_MSM8X16
 	select SND_HWDEP
         select DTS_EAGLE
 	select SND_SOC_MARLEY if MFD_MARLEY
-	select SND_SOC_CS35L34
-	select SND_SOC_CS35L35
-	select SND_SOC_OPALUM if SND_SOC_MARLEY
+	select SWITCH_ARIZONA if MFD_ARIZONA
 	help
 	 To add support for SoC audio on MSM8996.
 	 This will enable sound soc drivers which
@@ -285,5 +283,9 @@ config SND_SOC_MDM9640
 	 interfaces with DSP, also it will enable
 	 the machine drivers and the corresponding
 	 DAI-links.
+
+config SND_CS35L35_I2C2
+	bool "CS35L35 Use I2C2"
+	default n
 
 endmenu

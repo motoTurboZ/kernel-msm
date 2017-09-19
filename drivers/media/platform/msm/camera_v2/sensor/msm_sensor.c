@@ -17,6 +17,7 @@
 #include "msm_camera_i2c_mux.h"
 #include <linux/regulator/rpm-smd-regulator.h>
 #include <linux/regulator/consumer.h>
+#include "media/v4l2-device.h"
 
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -132,6 +133,15 @@ int msm_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 			__func__, __LINE__, power_info, sensor_i2c_client);
 		return -EINVAL;
 	}
+	if (s_ctrl && s_ctrl->msm_sd.sd.devnode &&
+		s_ctrl->sensordata->sensor_info &&
+		s_ctrl->sensordata->sensor_info->is_rear_prox_interfering) {
+		struct kobject *kobj = &s_ctrl->msm_sd.sd.devnode->dev.kobj;
+		char *envp[2] = {"RearImagerActive=0", 0};
+
+		if (kobject_uevent_env(kobj, KOBJ_CHANGE, envp) == 0)
+			sysfs_notify(kobj, NULL, NULL);
+	}
 	return msm_camera_power_down(power_info, sensor_device_type,
 		sensor_i2c_client);
 }
@@ -210,6 +220,15 @@ int msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 		}
 	}
 
+	if (rc == 0 && s_ctrl && s_ctrl->msm_sd.sd.devnode &&
+		s_ctrl->sensordata->sensor_info &&
+		s_ctrl->sensordata->sensor_info->is_rear_prox_interfering) {
+		struct kobject *kobj = &s_ctrl->msm_sd.sd.devnode->dev.kobj;
+		char *envp[2] = {"RearImagerActive=1", 0};
+
+		if (kobject_uevent_env(kobj, KOBJ_CHANGE, envp) == 0)
+			sysfs_notify(kobj, NULL, NULL);
+	}
 	return rc;
 }
 
@@ -236,6 +255,7 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int rc = 0;
 	uint16_t chipid = 0;
+	uint16_t modelid = 0;
 	uint16_t chipid_mask = 0;
 	struct msm_camera_i2c_client *sensor_i2c_client;
 	struct msm_camera_slave_info *slave_info;
@@ -272,12 +292,33 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 	if (chipid_mask != slave_info->sensor_id) {
 		if (slave_info->sensor_id2 > 0) {
 			if (chipid_mask == slave_info->sensor_id2)
-				return rc;
+				goto DONE;
 		}
 		pr_err("%s chip id %x does not match %x\n",
 				__func__, chipid, slave_info->sensor_id);
 		return -ENODEV;
 	}
+DONE:
+	if (slave_info->sensor_model_id) {
+		/* Sensor Model id is defined */
+		rc = sensor_i2c_client->i2c_func_tbl->i2c_read(
+			sensor_i2c_client, slave_info->sensor_model_id_reg_addr,
+			&modelid, MSM_CAMERA_I2C_WORD_DATA);
+		if (rc < 0) {
+			pr_err("%s: %s: model id read failed, id reg: 0x%x\n",
+				__func__, sensor_name,
+				slave_info->sensor_model_id_reg_addr);
+			return rc;
+		}
+		pr_info("%s: read model id: 0x%x\n", __func__, modelid);
+
+		if ((modelid & slave_info->sensor_model_id) != modelid) {
+			pr_err("%s model id 0x%x does NOT match 0x%x\n",
+			__func__, modelid, slave_info->sensor_model_id);
+			return -ENODEV;
+		}
+	}
+
 	return rc;
 }
 
@@ -1101,7 +1142,12 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 			pr_err("%s:%d: i2c_read failed\n", __func__, __LINE__);
 			break;
 		}
-		read_config_ptr->data = local_data;
+		if (copy_to_user((void __user *) &read_config_ptr->data,
+		    &local_data, sizeof(local_data))) {
+			pr_err("%s:%d: failed to copy data\n", __func__,
+				__LINE__);
+			rc = -EFAULT;
+		}
 		break;
 	}
 	case CFG_SLAVE_WRITE_I2C_ARRAY: {

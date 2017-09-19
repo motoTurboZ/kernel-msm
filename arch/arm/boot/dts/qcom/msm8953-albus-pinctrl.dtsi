@@ -14,8 +14,6 @@
 	/delete-node/ cs35l34_reset_default;
 	/delete-node/ pmx_motosh_out;
 	/delete-node/ pmx_motosh_in;
-	/delete-node/ laser_active;
-	/delete-node/ laser_suspend;
 	/delete-node/ factory_default;
 
 	haptic_reset_active: haptic_reset_active{
@@ -323,6 +321,59 @@
 				pins = "gpio136";
 				drive-strength = <2>;
 				bias-disable = <0>;
+			};
+		};
+	};
+
+	i2c_2 {
+		laser_active_irq: laser_active_irq {
+			mux {
+				pins = "gpio129";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio129";
+				drive-strength = <2>;
+				bias-pull-up; /* PULL UP */
+			};
+		};
+		laser_suspend_irq: laser_suspend_irq {
+			mux {
+				pins = "gpio129";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio129";
+				drive-strength = <2>;
+				bias-pull-down; /* PULL DOWN */
+			};
+		};
+		laser_active_xsdn: laser_active_xsdn {
+			mux {
+				pins = "gpio66";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio66";
+				drive-strength = <2>;
+				output-high;
+				bias-pull-up; /* PULL UP */
+			};
+		};
+		laser_suspend_xsdn: laser_suspend_xsdn {
+			mux {
+				pins = "gpio66";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio66";
+				drive-strength = <2>;
+				output-low;
+				bias-pull-down; /* PULL DOWN */
 			};
 		};
 	};

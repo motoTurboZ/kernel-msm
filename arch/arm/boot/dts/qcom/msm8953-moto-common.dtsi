@@ -570,10 +570,10 @@
 			ranges = <0 0 0xffffffff>;
 
 			/* Placeholder for SPI defined later */
-			spi_1: spi@7575000 { };
+			spi_1: spi@78b5000 { };
 
 			/* Placeholder for I2C defined later */
-			i2c_1: i2c@7575000 { };
+			i2c_1: i2c@78b5000 { };
 		};
 	};
 
@@ -678,7 +678,8 @@
 			<&afe_proxy_rx>, <&afe_proxy_tx>,
 			<&incall_record_rx>, <&incall_record_tx>,
 			<&incall_music_rx>, <&incall_music_2_rx>,
-			<&sb_5_rx>, <&bt_sco_rx>, <&bt_sco_tx>;
+			<&sb_5_rx>, <&bt_sco_rx>, <&bt_sco_tx>,
+			<&int_fm_rx>, <&int_fm_tx>;
 		asoc-cpu-names = "msm-dai-q6-auxpcm.1",
 			"msm-dai-q6-mi2s.3", "msm-dai-q6-mi2s.5",
 			"msm-dai-q6-dev.16384", "msm-dai-q6-dev.16385",
@@ -691,7 +692,8 @@
 			"msm-dai-q6-dev.240", "msm-dai-q6-dev.32771",
 			"msm-dai-q6-dev.32772", "msm-dai-q6-dev.32773",
 			"msm-dai-q6-dev.32770", "msm-dai-q6-dev.16394",
-			"msm-dai-q6-dev.12288", "msm-dai-q6-dev.12289";
+			"msm-dai-q6-dev.12288", "msm-dai-q6-dev.12289",
+			"msm-dai-q6-dev.12292", "msm-dai-q6-dev.12293";
 		asoc-codec = <&stub_codec>;
 		asoc-codec-names = "msm-stub-codec.1";
 	};
@@ -831,10 +833,6 @@
 					"back_temp";
 		status = "ok";
 	};
-
-	qcom,mdss_wb_panel {
-		status = "disabled";
-	};
 };
 
 &spi_1 { /* BLSP1 QUP1 */
@@ -902,11 +900,11 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	reg-names = "qup_phys_addr";
-	reg = <0x7575000 0x1000>;
+	reg = <0x78b5000 0x600>;
 	interrupt-names = "qup_irq";
 	interrupts = <0 95 0>;
-	dmas = <&dma_blsp1 12 32 0x20000020 0x20>,
-		<&dma_blsp1 13 32 0x20000020 0x20>;
+	dmas = <&dma_blsp1 4 64 0x20000020 0x20>,
+		<&dma_blsp1 5 32 0x20000020 0x20>;
 	dma-names = "tx", "rx";
 	qcom,master-id = <86>;
 	qcom,clk-freq-out = <400000>;
@@ -1234,6 +1232,12 @@
 
 &pm8953_typec {
 	status = "disabled";
+};
+
+&mdss_dsi_active {
+	config {
+		/delete-property/ output-high;
+	};
 };
 
 &mdss_mdp {

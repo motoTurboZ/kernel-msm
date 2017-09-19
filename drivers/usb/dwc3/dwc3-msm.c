@@ -172,7 +172,12 @@ MODULE_PARM_DESC(dcp_max_current, "max current drawn for DCP charger");
 #define	GSI_IF_STS	(QSCRATCH_REG_OFFSET + 0x1A4)
 #define	GSI_WR_CTRL_STATE_MASK	BIT(15)
 
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+#define CHG_RECHECK_CNT 5
+#define CHG_RECHECK_DELAY msecs_to_jiffies(1000)
+#else
 #define CHG_RECHECK_DELAY (jiffies + msecs_to_jiffies(5000))
+#endif
 
 struct dwc3_msm_req_complete {
 	struct list_head list_item;
@@ -290,6 +295,9 @@ struct dwc3_msm {
 	atomic_t                in_p3;
 	unsigned int		lpm_to_suspend_delay;
 	bool			init;
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+	unsigned int		chg_check_retry_cnt;
+#endif
 	struct timer_list       chg_check_timer;
 	bool			disable_bus_vote;
 	bool			force_lpm_in_idle;
@@ -303,6 +311,7 @@ struct dwc3_msm {
 	bool			vbus_reg_enabled;
 	u8			usbc_switch_state;
 	enum power_supply_usb_owner usb_owner;
+	bool		no_suspend_in_chg;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -792,7 +801,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	spin_lock_irqsave(&dwc->lock, flags);
 	if (!dep->endpoint.desc) {
 		dev_err(mdwc->dev,
-			"%s: trying to queue request %p to disabled ep %s\n",
+			"%s: trying to queue request %pK to disabled ep %s\n",
 			__func__, request, ep->name);
 		spin_unlock_irqrestore(&dwc->lock, flags);
 		return -EPERM;
@@ -829,7 +838,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 
 	if (dep->number == 0 || dep->number == 1) {
 		dev_err(mdwc->dev,
-			"%s: trying to queue dbm request %p to control ep %s\n",
+			"%s: trying to queue dbm request %pK to control ep %s\n",
 			__func__, request, ep->name);
 		spin_unlock_irqrestore(&dwc->lock, flags);
 		return -EPERM;
@@ -838,7 +847,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	if (dep->busy_slot != dep->free_slot || !list_empty(&dep->request_list)
 					 || !list_empty(&dep->req_queued)) {
 		dev_err(mdwc->dev,
-			"%s: trying to queue dbm request %p tp ep %s\n",
+			"%s: trying to queue dbm request %pK tp ep %s\n",
 			__func__, request, ep->name);
 		spin_unlock_irqrestore(&dwc->lock, flags);
 		return -EPERM;
@@ -861,7 +870,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	list_add_tail(&req_complete->list_item, &mdwc->req_complete_list);
 	request->complete = dwc3_msm_req_complete_func;
 
-	dev_vdbg(dwc->dev, "%s: queing request %p to ep %s length %d\n",
+	dev_vdbg(dwc->dev, "%s: queing request %pK to ep %s length %d\n",
 			__func__, request, ep->name, request->length);
 	size = dwc3_msm_read_reg(mdwc->base, DWC3_GEVNTSIZ(0));
 	dbm_event_buffer_config(mdwc->dbm,
@@ -1047,7 +1056,7 @@ static void gsi_ring_in_db(struct usb_ep *ep, struct usb_gsi_request *request)
 		dev_dbg(mdwc->dev, "Failed to get GSI DBL address MSB\n");
 
 	offset = dwc3_trb_dma_offset(dep, &dep->trb_pool[num_trbs-1]);
-	dev_dbg(mdwc->dev, "Writing link TRB addr: %pa to %p (%x)\n",
+	dev_dbg(mdwc->dev, "Writing link TRB addr: %pKa to %pK (%x)\n",
 	&offset, gsi_dbl_address_lsb, dbl_lo_addr);
 
 	writel_relaxed(offset, gsi_dbl_address_lsb);
@@ -1628,6 +1637,13 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 
 	dev_dbg(mdwc->dev, "%s\n", __func__);
 
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+	if (!dwc->softconnect) {
+		usb_gadget_disconnect(&dwc->gadget);
+		return;
+	}
+#endif
+
 	if (atomic_read(&dwc->in_lpm) || !dwc->is_drd) {
 		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
 		return;
@@ -2084,6 +2100,13 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 
 	if (atomic_read(&dwc->in_lpm)) {
 		dev_dbg(mdwc->dev, "%s: Already suspended\n", __func__);
+		dbg_event(dwc->ctrl_num, 0xFF, "Ctl Alr Sus", 0);
+		mutex_unlock(&mdwc->pm_lock);
+		return 0;
+	}
+
+	if (mdwc->no_suspend_in_chg && mdwc->chg_vbus_active) {
+		dev_dbg(mdwc->dev, "%s: In charging,no suspend\n", __func__);
 		dbg_event(dwc->ctrl_num, 0xFF, "Ctl Alr Sus", 0);
 		mutex_unlock(&mdwc->pm_lock);
 		return 0;
@@ -2756,7 +2779,7 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHG_PRESENT:
 		dbg_event(dwc->ctrl_num, 0xFF, "chg present", val->intval);
 		mdwc->chg_vbus_active = val->intval;
-		if (mdwc->chg_type == DWC3_INVALID_CHARGER)
+		if (mdwc->chg_type == DWC3_INVALID_CHARGER || !val->intval)
 			dwc3_msm_gadget_vbus_draw(mdwc, 0);
 		else
 			dwc3_msm_gadget_vbus_draw(mdwc, dcp_max_current);
@@ -3152,6 +3175,30 @@ static void dwc3_chg_check_timer_func(unsigned long data)
 {
 	struct dwc3_msm *mdwc = (struct dwc3_msm *) data;
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
+
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+	dev_dbg(mdwc->dev, "speed=%d, vbus_active=%d, cmax=%d, softconn=%d\n",
+		dwc->gadget.speed, mdwc->vbus_active,
+		mdwc->current_max, dwc->softconnect);
+
+	if (!dwc->softconnect) {
+		mdwc->chg_check_retry_cnt++;
+		if (dwc->gadget.speed != USB_SPEED_UNKNOWN &&
+		    mdwc->vbus_active)
+			schedule_work(&mdwc->restart_usb_work);
+		else if (mdwc->chg_check_retry_cnt < CHG_RECHECK_CNT) {
+			mod_timer(&mdwc->chg_check_timer,
+					jiffies + CHG_RECHECK_DELAY);
+			return;
+		}
+
+		if (mdwc->chg_type == DWC3_SDP_CHARGER &&
+		    mdwc->vbus_active)
+			dwc3_msm_gadget_vbus_draw(mdwc, DWC3_IDEV_CHG_MIN);
+
+		return;
+	}
+#endif
 
 	if (dwc->gadget.speed == USB_SPEED_UNKNOWN && mdwc->vbus_active &&
 			mdwc->current_max < DWC3_IDEV_CHG_MIN) {
@@ -3608,6 +3655,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 	mdwc->disable_host_mode_pm = of_property_read_bool(node,
 				"qcom,disable-host-mode-pm");
+	mdwc->no_suspend_in_chg = of_property_read_bool(node,
+				"qcom,no-suspend-in-chg");
 	mdwc->force_lpm_in_idle = of_property_read_bool(node,
 				"qcom,force-lpm-in-idle");
 
@@ -4098,6 +4147,9 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		atomic_read(&mdwc->dev->power.usage_count));
 
 	if (on) {
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+		unsigned long expires = 0;
+#endif
 		dev_dbg(mdwc->dev, "%s: turn on gadget %s\n",
 					__func__, dwc->gadget.name);
 
@@ -4110,8 +4162,21 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 
 		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 		usb_gadget_vbus_connect(&dwc->gadget);
+#ifdef CONFIG_USB_DWC3_CHG_DET_WA
+		if (dwc->softconnect && mdwc->chg_type == DWC3_SDP_CHARGER)
+			expires = jiffies + CHG_RECHECK_DELAY * CHG_RECHECK_CNT;
+		else if (!dwc->softconnect &&
+			 (mdwc->chg_type == DWC3_SDP_CHARGER ||
+			  mdwc->chg_type == DWC3_CDP_CHARGER))
+			expires = jiffies + CHG_RECHECK_DELAY;
+		if (expires != 0) {
+			mdwc->chg_check_retry_cnt = 0;
+			mod_timer(&mdwc->chg_check_timer, expires);
+		}
+#else
 		if (mdwc->chg_type == DWC3_SDP_CHARGER)
 			mod_timer(&mdwc->chg_check_timer, CHG_RECHECK_DELAY);
+#endif
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off gadget %s\n",
 					__func__, dwc->gadget.name);

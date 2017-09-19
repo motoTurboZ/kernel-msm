@@ -1853,7 +1853,7 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 do_send:
 	ctrl->cmd_cfg_restore = __mdss_dsi_cmd_mode_config(ctrl, 1);
 
-	if (rlen <= 2) {
+	if (rlen == 0) {
 		short_response = 1;
 		pkt_size = rlen;
 		rx_byte = 4;
@@ -3137,7 +3137,7 @@ static void __dsi_error_counter(struct dsi_err_container *err_container)
 		pr_err("%s: panic in WQ as dsi error intrs within:%dms\n",
 				__func__, err_container->err_time_delta);
 		MDSS_XLOG_TOUT_HANDLER_WQ("mdp", "dsi0_ctrl", "dsi0_phy",
-			"dsi1_ctrl", "dsi1_phy", "panic");
+			"dsi1_ctrl", "dsi1_phy");
 	}
 }
 

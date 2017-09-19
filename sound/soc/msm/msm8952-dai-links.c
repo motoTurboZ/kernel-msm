@@ -40,7 +40,7 @@ static struct snd_soc_ops msm8952_quat_mi2s_be_ops = {
 
 static struct snd_soc_ops msm8952_quin_mi2s_be_ops = {
 	.startup = msm_quin_mi2s_snd_startup,
-	.hw_params = msm_mi2s_snd_hw_params,
+	.hw_params = msm_quin_mi2s_snd_hw_params,
 	.shutdown = msm_quin_mi2s_snd_shutdown,
 };
 
@@ -409,9 +409,17 @@ static struct snd_soc_dai_link msm8952_tasha_be_dai[] = {
 
 #ifdef CONFIG_SND_SOC_MARLEY
 static const struct snd_soc_pcm_stream cs35l34_params = {
-	.formats = SNDRV_PCM_FORMAT_S16_LE,
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	.rate_min = 48000,
 	.rate_max = 48000,
+	.channels_min = 1,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream cs35l35_pdm_params = {
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	.rate_min = 96000,
+	.rate_max = 96000,
 	.channels_min = 1,
 	.channels_max = 2,
 };
@@ -449,6 +457,20 @@ static struct snd_soc_dai_link msm8952_marley_l35_dai_link[] = {
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
 		.params = &cs35l34_params,
+	},
+	{
+		.name = "MARLEY-PDM",
+		.stream_name = "MARLEY-PDM Playback",
+		.cpu_name = "marley-codec",
+		.cpu_dai_name = "marley-pdm",
+		.codec_name = "cs35l35.2-0040",
+		.codec_dai_name = "cs35l35-pdm",
+		.dai_fmt = SND_SOC_DAIFMT_PDM | SND_SOC_DAIFMT_NB_NF |
+			SND_SOC_DAIFMT_CBS_CFS,
+		.no_pcm = 1,
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.params = &cs35l35_pdm_params,
 	}
 };
 
@@ -481,6 +503,39 @@ static struct snd_soc_dai_link msm8952_marley_mods_be_dai[] = {
 		.be_id = MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
 		.be_hw_params_fixup = msm_quat_be_hw_params_fixup,
 		.ops = &msm8952_quat_mi2s_be_ops,
+		.ignore_suspend = 1,
+	}
+};
+
+static struct snd_soc_dai_link msm8952_marley_albus_mods_be_dai[] = {
+	{
+		/* mods I2S in and out */
+		.name = LPASS_BE_QUIN_MI2S_RX,
+		.stream_name = "Quinary MI2S Playback",
+		.cpu_dai_name = "msm-dai-q6-mi2s.5",
+		.platform_name = "msm-pcm-routing",
+		.codec_dai_name = "mods_codec_shim_dai",
+		.codec_name = "mods_codec_shim",
+		.no_pcm = 1,
+		.dpcm_playback = 1,
+		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_RX,
+		.be_hw_params_fixup = msm_quin_be_hw_params_fixup,
+		.ops = &msm8952_quin_mi2s_be_ops,
+		.ignore_pmdown_time = 1, /* dai link has playback support */
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_QUIN_MI2S_TX,
+		.stream_name = "Quinary MI2S Capture",
+		.cpu_dai_name = "msm-dai-q6-mi2s.5",
+		.platform_name = "msm-pcm-routing",
+		.codec_dai_name = "mods_codec_shim_dai",
+		.codec_name = "mods_codec_shim",
+		.no_pcm = 1,
+		.dpcm_capture = 1,
+		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_TX,
+		.be_hw_params_fixup = msm_quin_be_hw_params_fixup,  /* TBD */
+		.ops = &msm8952_quin_mi2s_be_ops,
 		.ignore_suspend = 1,
 	}
 };
@@ -1454,6 +1509,34 @@ static struct snd_soc_dai_link msm8952_common_be_dai[] = {
 		.ignore_suspend = 1,
 	},
 	{
+		.name = LPASS_BE_INT_FM_RX,
+		.stream_name = "Internal FM Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.12292",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.dpcm_playback = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_RX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_INT_FM_TX,
+		.stream_name = "Internal FM Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.12293",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.dpcm_capture = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_TX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	{
 		.name = LPASS_BE_AFE_PCM_RX,
 		.stream_name = "AFE Playback",
 		.cpu_dai_name = "msm-dai-q6-dev.224",
@@ -1537,20 +1620,6 @@ static struct snd_soc_dai_link msm8952_common_be_dai[] = {
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
-	{
-		.name = LPASS_BE_QUIN_MI2S_TX,
-		.stream_name = "Quinary MI2S Capture",
-		.cpu_dai_name = "msm-dai-q6-mi2s.5",
-		.platform_name = "msm-pcm-routing",
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
-		.no_pcm = 1,
-		.dpcm_capture = 1,
-		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_TX,
-		.be_hw_params_fixup = msm_be_hw_params_fixup,
-		.ops = &msm8952_quin_mi2s_be_ops,
-		.ignore_suspend = 1,
-	},
 };
 
 static struct snd_soc_dai_link msm8952_hdmi_dba_dai_link[] = {
@@ -1568,6 +1637,31 @@ static struct snd_soc_dai_link msm8952_hdmi_dba_dai_link[] = {
 		.ops = &msm8952_quin_mi2s_be_ops,
 		.ignore_pmdown_time = 1, /* dai link has playback support */
 		.ignore_suspend = 1,
+	},
+};
+
+static const struct snd_soc_pcm_stream hdmi_dba_params = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = 48000,
+	.rate_max = 48000,
+	.channels_min = 1,
+	.channels_max = 2,
+};
+
+static struct snd_soc_dai_link msm8952_albus_hdmi_dba_dai_link[] = {
+	{
+		.name = "MARLEY-HDMI",
+		.stream_name = "MARLEY-HDMI DBA Playback",
+		.cpu_name = "marley-codec",
+		.cpu_dai_name = "marley-aif2", /* AIF2 on Rev 6 and beyond */
+		.codec_name = "msm-hdmi-dba-codec-rx",
+		.codec_dai_name = "msm_hdmi_dba_codec_rx_dai",
+		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+			   SND_SOC_DAIFMT_CBS_CFS,
+		.no_pcm = 1,      /* has a backend */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		.params = &hdmi_dba_params,
 	},
 };
 
@@ -1791,7 +1885,8 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 {
 	struct snd_soc_card *card = &snd_soc_card_msm_card;
 	struct snd_soc_dai_link *msm8952_dai_links = NULL;
-	int num_links, ret, len1, len2, len3, len4 = 0;
+	int num_links, ret, len1, len2, len3, len4;
+	bool albus_hw = false;
 	enum codec_variant codec_ver = 0;
 	const char *tasha_lite[NUM_OF_TASHA_LITE_DEVICE] = {
 		"msm8952-tashalite-snd-card",
@@ -1809,7 +1904,7 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	if (!strcmp(card->name, "msm8952-tomtom-snd-card")) {
 		len1 = ARRAY_SIZE(msm8952_common_fe_dai);
 		len2 = len1 + ARRAY_SIZE(msm8952_tomtom_fe_dai);
-		len3 = len2 + ARRAY_SIZE(msm8952_common_be_dai);
+		len4 = len3 = len2 + ARRAY_SIZE(msm8952_common_be_dai);
 		snd_soc_card_msm[TOMTOM_CODEC].name = card->name;
 		card = &snd_soc_card_msm[TOMTOM_CODEC];
 		num_links = ARRAY_SIZE(msm8952_tomtom_dai_links);
@@ -1850,15 +1945,15 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	}
 #ifdef CONFIG_SND_SOC_MARLEY
 	else if (!strncmp(card->name, "msm8952-marley-card", 19)) {
-		int ret, len_2a, len_2b, is_amp_tommy = 0;
+		int ret, len_2a, len_2b;
 		const char *l35_cpu_dai_name;
 
 		if (of_property_read_bool(dev->of_node, "qcom,albus-audio"))
-			is_amp_tommy = 1;
+			albus_hw = true;
 		len1 = ARRAY_SIZE(msm8952_common_fe_dai);
 		len2 = len1 + ARRAY_SIZE(msm8952_marley_fe_dai);
 		len_2a = len2 + ARRAY_SIZE(msm8952_common_be_dai);
-		if (is_amp_tommy)
+		if (albus_hw)
 			len_2b = len_2a +
 				ARRAY_SIZE(msm8952_marley_l35_dai_link);
 		else
@@ -1867,7 +1962,6 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		len3 = len_2b + ARRAY_SIZE(msm8952_marley_be_dai);
 		snd_soc_card_msm[MARLEY_CODEC].name = card->name;
 		card = &snd_soc_card_msm[MARLEY_CODEC];
-		num_links = ARRAY_SIZE(msm8952_marley_dai_links);
 		memcpy(msm8952_marley_dai_links, msm8952_common_fe_dai,
 				sizeof(msm8952_common_fe_dai));
 		memcpy(msm8952_marley_dai_links + len1,
@@ -1877,7 +1971,7 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		memcpy(msm8952_marley_dai_links + len_2b,
 			msm8952_marley_be_dai, sizeof(msm8952_marley_be_dai));
 		msm8952_dai_links = msm8952_marley_dai_links;
-		if (is_amp_tommy) {
+		if (albus_hw) {
 			ret = of_property_read_string(dev->of_node,
 				"qcom,l35_cpu_dai_name", &l35_cpu_dai_name);
 			if (ret == 0)
@@ -1886,8 +1980,10 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 			memcpy(msm8952_marley_dai_links + len_2a,
 				msm8952_marley_l35_dai_link,
 				sizeof(msm8952_marley_l35_dai_link));
-			/* Add the codec-codec link to mod here */
-			len4 = len3;
+			memcpy(msm8952_marley_dai_links + len3,
+				msm8952_marley_albus_mods_be_dai,
+				sizeof(msm8952_marley_albus_mods_be_dai));
+			len4 = len3 + ARRAY_SIZE(msm8952_marley_mods_be_dai);
 		} else {
 			memcpy(msm8952_marley_dai_links + len_2a,
 				msm8952_marley_l34_dai_link,
@@ -1901,18 +1997,35 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 #endif
 
 	if (of_property_read_bool(dev->of_node, "qcom,hdmi-dba-codec-rx")) {
-		dev_dbg(dev, "%s(): hdmi dba audio support present\n",
+		if (!albus_hw) {
+			dev_dbg(dev, "%s(): hdmi dba audio present\n",
 				__func__);
-		memcpy(msm8952_dai_links + len4, msm8952_hdmi_dba_dai_link,
-			sizeof(msm8952_hdmi_dba_dai_link));
-		len4 += ARRAY_SIZE(msm8952_hdmi_dba_dai_link);
-
+			memcpy(msm8952_dai_links + len4,
+			       msm8952_hdmi_dba_dai_link,
+			       sizeof(msm8952_hdmi_dba_dai_link));
+			len4 += ARRAY_SIZE(msm8952_hdmi_dba_dai_link);
+		} else {
+			const char *dba_cpu_dai_name;
+			dev_dbg(dev, "%s(): albus hdmi dba audio present\n",
+				__func__);
+			ret = of_property_read_string(dev->of_node,
+				"qcom,dba_cpu_dai_name", &dba_cpu_dai_name);
+			if (ret == 0)
+				msm8952_albus_hdmi_dba_dai_link[0].cpu_dai_name =
+					dba_cpu_dai_name;
+			memcpy(msm8952_dai_links + len4,
+			       msm8952_albus_hdmi_dba_dai_link,
+			       sizeof(msm8952_albus_hdmi_dba_dai_link));
+			len4 += ARRAY_SIZE(msm8952_albus_hdmi_dba_dai_link);
+		}
 	} else {
-		dev_dbg(dev, "%s(): No hdmi dba present, add quin dai\n",
+		if (!albus_hw) {
+			dev_dbg(dev, "%s(): No hdmi dba. Add quin dai\n",
 				__func__);
-		memcpy(msm8952_dai_links + len4, msm8952_quin_dai_link,
-			sizeof(msm8952_quin_dai_link));
-		len4 += ARRAY_SIZE(msm8952_quin_dai_link);
+			memcpy(msm8952_dai_links + len4, msm8952_quin_dai_link,
+			       sizeof(msm8952_quin_dai_link));
+			len4 += ARRAY_SIZE(msm8952_quin_dai_link);
+		}
 	}
 	card->dai_link = msm8952_dai_links;
 	card->num_links = len4;

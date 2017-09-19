@@ -83,6 +83,8 @@ enum sensor_sub_module_t {
 	SUB_MODULE_CSIPHY_3D,
 	SUB_MODULE_OIS,
 	SUB_MODULE_EXT,
+	SUB_MODULE_IR_LED,
+	SUB_MODULE_IR_CUT,
 	SUB_MODULE_MAX,
 };
 
@@ -171,6 +173,18 @@ enum cci_i2c_master_t {
 	MASTER_MAX,
 };
 
+enum flash_position {
+	REAR_FLASH,
+	FRONT_FLASH,
+	INVALID_FLASH,
+};
+
+enum mux_sel_option {
+	NO_MUX_SEL,
+	USE_MUX_SEL,
+	INVALID_MUX_SEL,
+};
+
 struct msm_camera_i2c_array_write_config {
 	struct msm_camera_i2c_reg_setting conf_array;
 	uint16_t slave_addr;
@@ -212,6 +226,7 @@ struct msm_sensor_info_t {
 	uint32_t sensor_mount_angle;
 	int modes_supported;
 	enum camb_position_t position;
+	int is_rear_prox_interfering;
 };
 
 struct camera_vreg_t {
@@ -287,11 +302,21 @@ struct msm_eeprom_info_t {
 	struct msm_eeprom_memory_map_array *mem_map_array;
 };
 
+struct msm_ir_led_cfg_data_t {
+	enum msm_ir_led_cfg_type_t cfg_type;
+	int32_t pwm_duty_on_ns;
+	int32_t pwm_period_ns;
+};
+
+struct msm_ir_cut_cfg_data_t {
+	enum msm_ir_cut_cfg_type_t cfg_type;
+};
+
 struct msm_eeprom_cfg_data {
 	enum eeprom_cfg_type_t cfgtype;
 	uint8_t is_supported;
 	union {
-		char eeprom_name[MAX_SENSOR_NAME];
+		char eeprom_name[MAX_EEPROM_NAME];
 		struct eeprom_get_t get_data;
 		struct eeprom_read_t read_data;
 		struct eeprom_write_t write_data;
@@ -342,6 +367,7 @@ enum msm_actuator_cfg_type_t {
 	CFG_ACTUATOR_POWERDOWN,
 	CFG_ACTUATOR_POWERUP,
 	CFG_ACTUATOR_INIT,
+	CFG_GET_POSITION,
 };
 
 struct msm_ois_opcode {
@@ -422,6 +448,15 @@ struct park_lens_data_t {
 	uint32_t max_step;
 };
 
+struct msm_actuator_get_pos_cfg_t {
+	uint16_t target_supported;
+	uint16_t target_reg;
+	uint16_t target_data_shift;
+	uint16_t actual_supported;
+	uint16_t actual_reg;
+	uint16_t actual_data_shift;
+};
+
 struct msm_actuator_params_t {
 	enum actuator_type act_type;
 	uint8_t reg_tbl_size;
@@ -434,6 +469,7 @@ struct msm_actuator_params_t {
 	struct msm_actuator_reg_params_t *reg_tbl_params;
 	struct reg_settings_t *init_settings;
 	struct park_lens_data_t park_lens;
+	struct msm_actuator_get_pos_cfg_t get_pos_cfg;
 };
 
 struct msm_actuator_set_info_t {
@@ -494,6 +530,13 @@ struct msm_actuator_set_position_t {
 	uint16_t delay[MAX_NUMBER_OF_STEPS];
 };
 
+struct msm_actuator_get_position_t {
+	uint16_t target_supported;
+	int32_t  target;
+	uint16_t actual_supported;
+	int32_t  actual;
+};
+
 struct msm_actuator_cfg_data {
 	int cfgtype;
 	uint8_t is_af_supported;
@@ -502,6 +545,7 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_set_info_t set_info;
 		struct msm_actuator_get_info_t get_info;
 		struct msm_actuator_set_position_t setpos;
+		struct msm_actuator_get_position_t getpos;
 		enum af_camera_name cam_name;
 	} cfg;
 };
@@ -533,6 +577,8 @@ struct msm_flash_cfg_data_t {
 	enum msm_flash_cfg_type_t cfg_type;
 	int32_t flash_current[MAX_LED_TRIGGERS];
 	int32_t flash_duration[MAX_LED_TRIGGERS];
+	enum flash_position position;
+	enum mux_sel_option mux_sel;
 	union {
 		struct msm_flash_init_info_t *flash_init_info;
 		struct msm_camera_i2c_reg_setting_array *settings;
@@ -594,6 +640,12 @@ struct sensor_init_cfg_data {
 
 #define VIDIOC_MSM_OIS_CFG_DOWNLOAD \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 14, struct msm_ois_cfg_download_data)
+
+#define VIDIOC_MSM_IR_LED_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 15, struct msm_ir_led_cfg_data_t)
+
+#define VIDIOC_MSM_IR_CUT_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 15, struct msm_ir_cut_cfg_data_t)
 
 #endif
 

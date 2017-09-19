@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -62,6 +62,8 @@
 #define CLAMP_N_EN			BIT(5)
 #define FREEZIO_N			BIT(1)
 #define POWER_DOWN			BIT(0)
+
+#define QUSB2PHY_PORT_TEST_CTRL		0xB8
 
 #define QUSB2PHY_PORT_UTMI_CTRL1	0xC0
 #define SUSPEND_N			BIT(5)
@@ -165,6 +167,8 @@ struct qusb_phy {
 	int			*emu_dcm_reset_seq;
 	int			emu_dcm_reset_seq_len;
 	spinlock_t		pulse_lock;
+	struct mutex regulator_lock;
+
 };
 
 static void qusb_phy_enable_clocks(struct qusb_phy *qphy, bool on)
@@ -211,11 +215,14 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on)
 {
 	int ret = 0;
 
+	mutex_lock(&qphy->regulator_lock);
+
 	dev_dbg(qphy->phy.dev, "%s turn %s regulators. power_enabled:%d\n",
 			__func__, on ? "on" : "off", qphy->power_enabled);
 
 	if (qphy->power_enabled == on) {
 		dev_dbg(qphy->phy.dev, "PHYs' regulators are already ON.\n");
+		mutex_unlock(&qphy->regulator_lock);
 		return 0;
 	}
 
@@ -278,6 +285,7 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on)
 	qphy->power_enabled = true;
 
 	pr_debug("%s(): QUSB PHY's regulators are turned ON.\n", __func__);
+	mutex_unlock(&qphy->regulator_lock);
 	return ret;
 
 disable_vdda33:
@@ -326,6 +334,7 @@ unconfig_vdd:
 err_vdd:
 	qphy->power_enabled = false;
 	dev_dbg(qphy->phy.dev, "QUSB PHY's regulators are turned OFF.\n");
+	mutex_unlock(&qphy->regulator_lock);
 	return ret;
 }
 
@@ -915,6 +924,21 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			writel_relaxed(intr_mask,
 				qphy->base + QUSB2PHY_PORT_INTR_CTRL);
 
+			/* enable phy auto-resume */
+			writel_relaxed(0x0C,
+					qphy->base + QUSB2PHY_PORT_TEST_CTRL);
+			/* flush the previous write before next write */
+			wmb();
+			writel_relaxed(0x04,
+				qphy->base + QUSB2PHY_PORT_TEST_CTRL);
+
+
+			dev_dbg(phy->dev, "%s: intr_mask = %x\n",
+			__func__, intr_mask);
+
+			/* Makes sure that above write goes through */
+			wmb();
+
 			qusb_phy_enable_clocks(qphy, false);
 		} else { /* Disconnect case */
 			/* Disable all interrupts */
@@ -944,7 +968,12 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			if (qphy->tcsr_phy_lvl_shift_keeper)
 				writel_relaxed(0x0,
 					qphy->tcsr_phy_lvl_shift_keeper);
-			qusb_phy_enable_power(qphy, false);
+			/* Do not disable power rails if there is vote for it */
+			if (!qphy->rm_pulldown)
+				qusb_phy_enable_power(qphy, false);
+			else
+				dev_dbg(phy->dev, "race with rm_pulldown. Keep ldo ON\n");
+
 		}
 		qphy->suspended = true;
 	} else {
@@ -1044,6 +1073,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 
 	qphy->phy.dev = dev;
 	spin_lock_init(&qphy->pulse_lock);
+	mutex_init(&qphy->regulator_lock);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 							"qusb_phy_base");

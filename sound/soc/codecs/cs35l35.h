@@ -90,7 +90,7 @@
 #define CS35L35_PLL_STATUS		0x78	/* PLL Status */
 #define CS35L35_OTP_TRIM_STATUS		0x7E	/* OTP Trim Status */
 
-#define CS35L35_MAX_REGISTER		0x7E
+#define CS35L35_MAX_REGISTER		0x7F
 
 /* CS35L35_PWRCTL1 */
 #define CS35L35_SFT_RST			0x80
@@ -154,8 +154,14 @@
 #define CS35L35_SP_DRV_MASK		0x10
 #define CS35L35_SP_DRV_SHIFT		4
 #define CS35L35_CLK_CTL2_MASK		0xFF
+#define CS35L35_CLK_DIV_MASK		0x3
 #define CS35L35_PDM_MODE_MASK		0x40
 #define CS35L35_PDM_MODE_SHIFT		6
+#define CS35L35_CLK_SOURCE_MASK		0x03
+#define CS35L35_CLK_SOURCE_SHIFT	0
+#define CS35L35_CLK_SOURCE_MCLK		0
+#define CS35L35_CLK_SOURCE_SCLK		1
+#define CS35L35_CLK_SOURCE_PDM		2
 
 #define CS35L35_SP_SCLKS_MASK		0x0F
 #define CS35L35_SP_SCLKS_SHIFT		0x00
@@ -163,6 +169,7 @@
 #define CS35L35_SP_SCLKS_32FS		0x07
 #define CS35L35_SP_SCLKS_48FS		0x0B
 #define CS35L35_SP_SCLKS_64FS		0x0F
+#define CS35L35_SP_RATE_MASK		0xC0
 
 #define CS35L35_PDN_BST_MASK		0x06
 #define CS35L35_PDN_BST_FETON_SHIFT	1
@@ -176,6 +183,7 @@
 #define CS35L35_MCLK_DIS_SHIFT		2
 
 #define CS35L35_BST_CTL_MASK		0x7F
+#define CS35L35_BST_CTL_SHIFT		0
 #define CS35L35_AMP_MUTE_MASK		0x20
 #define CS35L35_AMP_MUTE_SHIFT		5
 #define CS35L35_AMP_GAIN_ZC_MASK	0x10
@@ -249,7 +257,7 @@
 #define CS35L35_IMON_OVFL		0x04
 
 #define CS35L35_FORMATS (SNDRV_PCM_FMTBIT_U8 | SNDRV_PCM_FMTBIT_S16_LE | \
-			SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE)
+			SNDRV_PCM_FMTBIT_S24_LE)
 
 struct  cs35l35_private {
 	struct snd_soc_codec *codec;
@@ -257,16 +265,16 @@ struct  cs35l35_private {
 	struct regmap *regmap;
 	struct regulator_bulk_data supplies[2];
 	int num_supplies;
-	void *control_data;
-	int mclk;
+	int sysclk;
 	int sclk;
 	int mclk_pll;
 	int mclk_div;
 	int mclk_sp_base;
 	bool tdm_mode;
 	bool pdm_mode;
-	bool i2s_mode;
+	bool i2s_enabled;
 	bool slave_mode;
+	bool pdm_mclk_switch;
 	/* GPIO for /RST */
 	struct gpio_desc *reset_gpio;
 	/* GPIO for INT */

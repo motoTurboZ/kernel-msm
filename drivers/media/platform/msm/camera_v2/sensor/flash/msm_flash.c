@@ -243,6 +243,7 @@ static int32_t msm_flash_i2c_init(
 			flash_ctrl->power_setting_array.power_down_setting_a,
 			power_setting_array32->power_down_setting_a,
 			flash_ctrl->power_setting_array.size_down);
+		kfree(power_setting_array32);
 	} else
 #endif
 	if (copy_from_user(&flash_ctrl->power_setting_array,
@@ -268,6 +269,16 @@ static int32_t msm_flash_i2c_init(
 		flash_ctrl->power_setting_array.size;
 	flash_ctrl->power_info.power_down_setting_size =
 		flash_ctrl->power_setting_array.size_down;
+
+	if ((flash_ctrl->power_info.power_setting_size > MAX_POWER_CONFIG) ||
+	(flash_ctrl->power_info.power_down_setting_size > MAX_POWER_CONFIG)) {
+		pr_err("%s:%d invalid power setting size=%d size_down=%d\n",
+			__func__, __LINE__,
+			flash_ctrl->power_info.power_setting_size,
+			flash_ctrl->power_info.power_down_setting_size);
+		rc = -EINVAL;
+		goto msm_flash_i2c_init_fail;
+	}
 
 	rc = msm_camera_fill_vreg_params(
 			flash_ctrl->power_info.cam_vreg,
@@ -389,6 +400,30 @@ static int32_t msm_flash_i2c_release(
 	return 0;
 }
 
+static void msm_flash_set_mux_gpio_value(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data,
+	bool enable)
+{
+	/* Set or reset GPIO that selects which flash to use */
+	if (flash_data && flash_data->mux_sel == USE_MUX_SEL) {
+		struct msm_camera_power_ctrl_t *power_info =
+			&flash_ctrl->power_info;
+		if (power_info->gpio_conf &&
+		    power_info->gpio_conf->gpio_num_info &&
+		    power_info->gpio_conf->gpio_num_info->
+		    valid[SENSOR_GPIO_CUSTOM1]) {
+			gpio_set_value_cansleep(
+				power_info->gpio_conf->gpio_num_info->
+				    gpio_num[SENSOR_GPIO_CUSTOM1],
+				enable ? GPIO_OUT_HIGH : GPIO_OUT_LOW);
+		} else {
+			pr_err("%s: Invalid GPIO\n", __func__);
+		}
+
+	}
+}
+
 static int32_t msm_flash_off(struct msm_flash_ctrl_t *flash_ctrl,
 	struct msm_flash_cfg_data_t *flash_data)
 {
@@ -405,6 +440,8 @@ static int32_t msm_flash_off(struct msm_flash_ctrl_t *flash_ctrl,
 			led_trigger_event(flash_ctrl->torch_trigger[i], 0);
 	if (flash_ctrl->switch_trigger)
 		led_trigger_event(flash_ctrl->switch_trigger, 0);
+
+	msm_flash_set_mux_gpio_value(flash_ctrl, flash_data, FALSE);
 
 	CDBG("Exit\n");
 	return 0;
@@ -481,10 +518,23 @@ static int32_t msm_flash_init(
 		FLASH_DRIVER_DEFAULT) {
 		flash_driver_type = flash_ctrl->flash_driver_type;
 		for (i = 0; i < MAX_LED_TRIGGERS; i++) {
-			flash_data->flash_current[i] =
-				flash_ctrl->flash_max_current[i];
-			flash_data->flash_duration[i] =
-				flash_ctrl->flash_max_duration[i];
+			if ((flash_data->position == FRONT_FLASH) &&
+			     flash_ctrl->flash_alt_max_current[i]) {
+				flash_data->flash_current[i] =
+					flash_ctrl->flash_alt_max_current[i];
+			} else {
+				flash_data->flash_current[i] =
+					flash_ctrl->flash_max_current[i];
+			}
+
+			if ((flash_data->position == FRONT_FLASH) &&
+			     flash_ctrl->flash_alt_max_duration[i]) {
+				flash_data->flash_duration[i] =
+					flash_ctrl->flash_alt_max_duration[i];
+			} else {
+				flash_data->flash_duration[i] =
+					flash_ctrl->flash_max_duration[i];
+			}
 		}
 	} else if (flash_data->cfg.flash_init_info->flash_driver_type ==
 		flash_ctrl->flash_driver_type) {
@@ -544,16 +594,29 @@ static int32_t msm_flash_low(
 		if (flash_ctrl->flash_trigger[i])
 			led_trigger_event(flash_ctrl->flash_trigger[i], 0);
 
+	msm_flash_set_mux_gpio_value(flash_ctrl, flash_data, TRUE);
+
 	/* Turn on flash triggers */
 	for (i = 0; i < flash_ctrl->torch_num_sources; i++) {
 		if (flash_ctrl->torch_trigger[i]) {
-			max_current = flash_ctrl->torch_max_current[i];
+			if (flash_data->position == FRONT_FLASH &&
+			    flash_ctrl->torch_alt_max_current)
+				max_current =
+					flash_ctrl->torch_alt_max_current[i];
+			else
+				max_current = flash_ctrl->torch_max_current[i];
+
 			if (flash_data->flash_current[i] >= 0 &&
 				flash_data->flash_current[i] <
 				max_current) {
 				curr = flash_data->flash_current[i];
 			} else {
-				curr = flash_ctrl->torch_op_current[i];
+				if (flash_data->position == FRONT_FLASH &&
+				    flash_ctrl->torch_alt_op_current)
+					curr =
+					  flash_ctrl->torch_alt_op_current[i];
+				else
+					curr = flash_ctrl->torch_op_current[i];
 				pr_debug("LED current clamped to %d\n",
 					curr);
 			}
@@ -581,16 +644,29 @@ static int32_t msm_flash_high(
 		if (flash_ctrl->torch_trigger[i])
 			led_trigger_event(flash_ctrl->torch_trigger[i], 0);
 
+	msm_flash_set_mux_gpio_value(flash_ctrl, flash_data, TRUE);
+
 	/* Turn on flash triggers */
 	for (i = 0; i < flash_ctrl->flash_num_sources; i++) {
 		if (flash_ctrl->flash_trigger[i]) {
-			max_current = flash_ctrl->flash_max_current[i];
+			if (flash_data->position == FRONT_FLASH &&
+			    flash_ctrl->flash_alt_max_current)
+				max_current =
+					flash_ctrl->flash_alt_max_current[i];
+			else
+				max_current = flash_ctrl->flash_max_current[i];
+
 			if (flash_data->flash_current[i] >= 0 &&
 				flash_data->flash_current[i] <
 				max_current) {
 				curr = flash_data->flash_current[i];
 			} else {
-				curr = flash_ctrl->flash_op_current[i];
+				if (flash_data->position == FRONT_FLASH &&
+				    flash_ctrl->flash_alt_op_current)
+					curr =
+					   flash_ctrl->flash_alt_op_current[i];
+				else
+					curr = flash_ctrl->flash_op_current[i];
 				pr_debug("LED flash_current[%d] clamped %d\n",
 					i, curr);
 			}
@@ -811,22 +887,52 @@ static int32_t msm_flash_get_pmic_source_info(
 				continue;
 			}
 
+			/* Read alternate operational-current */
+			rc = of_property_read_u32(flash_src_node,
+				"qcom,alt-current",
+				&fctrl->flash_alt_op_current[i]);
+			if (rc < 0) {
+				pr_err("alternate current: read failed\n");
+				of_node_put(flash_src_node);
+				/* Non-fatal; this property is optional */
+			}
+
 			/* Read max-current */
 			rc = of_property_read_u32(flash_src_node,
 				"qcom,max-current",
 				&fctrl->flash_max_current[i]);
 			if (rc < 0) {
-				pr_err("current: read failed\n");
+				pr_err("max-current: read failed\n");
 				of_node_put(flash_src_node);
 				continue;
 			}
 
-			/* Read max-duration */
+			/* Read alt-max-current */
+			rc = of_property_read_u32(flash_src_node,
+				"qcom,alt-max-current",
+				&fctrl->flash_alt_max_current[i]);
+			if (rc < 0) {
+				pr_err("alternate max-current: read failed\n");
+				of_node_put(flash_src_node);
+				/* Non-fatal; this property is optional */
+			}
+
+			/* Read duration */
 			rc = of_property_read_u32(flash_src_node,
 				"qcom,duration",
 				&fctrl->flash_max_duration[i]);
 			if (rc < 0) {
 				pr_err("duration: read failed\n");
+				of_node_put(flash_src_node);
+				/* Non-fatal; this property is optional */
+			}
+
+			/* Read alt-duration */
+			rc = of_property_read_u32(flash_src_node,
+				"qcom,alt-duration",
+				&fctrl->flash_alt_max_duration[i]);
+			if (rc < 0) {
+				pr_err("alternate duration: read failed\n");
 				of_node_put(flash_src_node);
 				/* Non-fatal; this property is optional */
 			}
@@ -891,6 +997,16 @@ static int32_t msm_flash_get_pmic_source_info(
 				continue;
 			}
 
+			/* Read alternate operational-current */
+			rc = of_property_read_u32(torch_src_node,
+				"qcom,alt-current",
+				&fctrl->torch_alt_op_current[i]);
+			if (rc < 0) {
+				pr_err("alternate current: read failed\n");
+				of_node_put(torch_src_node);
+				/* Non-fatal; this property is optional */
+			}
+
 			/* Read max-current */
 			rc = of_property_read_u32(torch_src_node,
 				"qcom,max-current",
@@ -899,6 +1015,16 @@ static int32_t msm_flash_get_pmic_source_info(
 				pr_err("current: read failed\n");
 				of_node_put(torch_src_node);
 				continue;
+			}
+
+			/* Read alternate max-current */
+			rc = of_property_read_u32(torch_src_node,
+				"qcom,alt-max-current",
+				&fctrl->torch_alt_max_current[i]);
+			if (rc < 0) {
+				pr_err("alternate current: read failed\n");
+				of_node_put(torch_src_node);
+				/* Non-fatal; this property is optional */
 			}
 
 			of_node_put(torch_src_node);

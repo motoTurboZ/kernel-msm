@@ -13,6 +13,8 @@
 #include "msm8937-moto-common.dtsi"
 #include "dsi-panel-mot-tianma-497-1080p-video.dtsi"
 #include "dsi-panel-mot-inx-497-1080p-video.dtsi"
+#include "msm8937-camera-sensor-mot.dtsi"
+#include "msm8937-cedric-fps.dtsi"
 
  / {
 	model = "cedric";
@@ -66,6 +68,7 @@
 		gpios = <&tlmm 31 0x2008>; /* IRQ */
 		cap,use_channel = <0x04>;
 		cap,scan_period = <0x01>;
+		cap,raw_data_channel = <0x02>;
 		reg_array_len = <8>;
 		reg_array_val = <0x11 0x02 0x12 0x0b 0x13 0x03 0x14 0x77 0x15 0x81 0x18 0x5e 0x19 0x10 0x1a 0x04>;
 	};
@@ -177,18 +180,18 @@
 };
 
 &pmi8950_charger {
-	qcom,fastchg-current-ma = <2000>;
-	qcom,chg-thermal-mitigation = <2000>, <1600>, <1200>, <1000>,
+	qcom,fastchg-current-ma = <1850>;
+	qcom,chg-thermal-mitigation = <1850>, <1600>, <1200>, <1000>,
 				      <700>, <400>;
 	/delete-property/ qcom,dc-thermal-mitigation;
-	qcom,parallel-charge-current-map = <2000 2000 0>,
+	qcom,parallel-charge-current-map = <1850 1850 0>,
 					   <1600 1600 0>,
 					   <1200 1200 0>,
 					   <1000 1000 0>,
 					   <700 700 0>,
 					   <400 400 0>;
 	qcom,stepchg-voltage-mv = <4400>;
-	qcom,stepchg-current-ma = <2000>;
+	qcom,stepchg-current-ma = <1850>;
 	qcom,stepchg-taper-ma = <1500>;
 	qcom,stepchg-iterm-ma = <125>;
 	/delete-property/ qcom,enable-hvdcp-9v;
@@ -202,6 +205,7 @@
 &usb_otg {
 	qcom,hsusb-otg-phy-init-seq =
 		<0x44 0x80 0x35 0x81 0x03 0x82 0x33 0x83 0xffffffff>;
+	qcom,chg-dcp-icl = <1800>;
 };
 
 &mot_batterydata {
@@ -212,4 +216,3 @@
 &pmi_haptic {
 	qcom,vmax-mv = <2700>;
 };
-

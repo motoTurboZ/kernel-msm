@@ -816,15 +816,9 @@ static int msm_otg_reset(struct usb_phy *phy)
 							USB_HS_APF_CTRL);
 
 	/*
-	 * Enable USB BAM if USB BAM is enabled already before block reset as
-	 * block reset also resets USB BAM registers.
+	 * Disable USB BAM as block reset resets USB BAM registers.
 	 */
-	if (test_bit(ID, &motg->inputs)) {
-		msm_usb_bam_enable(CI_CTRL,
-				   phy->otg->gadget->bam2bam_func_enabled);
-	} else {
-		dev_dbg(phy->dev, "host mode BAM not enabled\n");
-	}
+	msm_usb_bam_enable(CI_CTRL, false);
 
 	return 0;
 }
@@ -2860,7 +2854,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 							IDEV_CHG_TA);
 					else
 					       msm_otg_notify_charger(motg,
-							IDEV_CHG_DCP);
+							motg->chg_dcp_icl);
 					if (!motg->is_ext_chg_dcp)
 						otg->phy->state =
 							OTG_STATE_B_CHARGER;
@@ -3128,7 +3122,7 @@ static void msm_otg_set_vbus_state(int online)
 out:
 	if (motg->is_ext_chg_dcp) {
 		if (test_bit(B_SESS_VLD, &motg->inputs)) {
-			msm_otg_notify_charger(motg, IDEV_CHG_DCP);
+			msm_otg_notify_charger(motg, motg->chg_dcp_icl);
 		} else {
 			motg->is_ext_chg_dcp = false;
 			motg->chg_state = USB_CHG_STATE_UNDEFINED;
@@ -3920,10 +3914,11 @@ set_msm_otg_perf_mode(struct device *dev, struct device_attribute *attr,
 		ret = clk_set_rate(motg->core_clk, clk_rate);
 		if (ret)
 			pr_err("sys_clk set_rate fail:%d %ld\n", ret, clk_rate);
+		msm_otg_dbg_log_event(&motg->phy, "OTG PERF SET",
+							clk_rate, ret);
 	} else {
 		pr_err("usb sys_clk rate is undefined\n");
 	}
-	msm_otg_dbg_log_event(&motg->phy, "OTG PERF SET", clk_rate, ret);
 
 	return count;
 }
@@ -4504,6 +4499,14 @@ static int msm_otg_probe(struct platform_device *pdev)
 		motg->core_clk_svs_rate = clk_round_rate(motg->core_clk, ret);
 	}
 
+	if (of_property_read_u32(pdev->dev.of_node,
+					"qcom,chg-dcp-icl", &ret)) {
+		dev_dbg(&pdev->dev, "DCP ICl not specified, use default IDEV_CHG_DCP\n");
+		motg->chg_dcp_icl = IDEV_CHG_DCP;
+	} else {
+		motg->chg_dcp_icl = ret;
+	}
+
 	motg->default_noc_mode = USB_NOC_NOM_VOTE;
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,default-mode-svs")) {
 		motg->core_clk_rate = motg->core_clk_svs_rate;
@@ -4701,7 +4704,7 @@ static int msm_otg_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto devote_bus_bw;
 	}
-	dev_info(&pdev->dev, "OTG regs = %p\n", motg->regs);
+	dev_info(&pdev->dev, "OTG regs = %pK\n", motg->regs);
 
 	if (pdata->enable_sec_phy) {
 		res = platform_get_resource_byname(pdev,

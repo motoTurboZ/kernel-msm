@@ -109,6 +109,18 @@ static void nqx_disable_irq(struct nqx_dev *nqx_dev)
 	spin_unlock_irqrestore(&nqx_dev->irq_enabled_lock, flags);
 }
 
+static void nqx_enable_irq(struct nqx_dev *nqx_dev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&nqx_dev->irq_enabled_lock, flags);
+	if (!nqx_dev->irq_enabled) {
+		nqx_dev->irq_enabled = true;
+		enable_irq(nqx_dev->client->irq);
+	}
+	spin_unlock_irqrestore(&nqx_dev->irq_enabled_lock, flags);
+}
+
 static irqreturn_t nqx_dev_irq_handler(int irq, void *dev_id)
 {
 	struct nqx_dev *nqx_dev = dev_id;
@@ -209,6 +221,12 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 		goto err;
 	}
 	mutex_unlock(&nqx_dev->read_mutex);
+
+	/* pn5xx seems to be slow in handling I2C read requests
+	  * so add 1ms delay after recv operation
+	  */
+	usleep_range(1000, 1100);
+
 	return ret;
 
 err:
@@ -386,6 +404,7 @@ int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 		dev_dbg(&nqx_dev->client->dev,
 			"gpio_set_value enable: %s: info: %p\n",
 			__func__, nqx_dev);
+		nqx_enable_irq(nqx_dev);
 		if (gpio_is_valid(nqx_dev->firm_gpio))
 			gpio_set_value(nqx_dev->firm_gpio, 0);
 		gpio_set_value(nqx_dev->en_gpio, 1);
@@ -591,6 +610,10 @@ err_clk:
 static int nqx_clock_deselect(struct nqx_dev *nqx_dev)
 {
 	int r = -1;
+
+	/* if NULL we assume external crystal and dont fail */
+	if ((nqx_dev->s_clk == NULL) || IS_ERR(nqx_dev->s_clk))
+		return 0;
 
 	if ((nqx_dev->s_clk != NULL) && !IS_ERR(nqx_dev->s_clk)) {
 		if (nqx_dev->clk_run == true) {

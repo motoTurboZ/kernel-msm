@@ -153,6 +153,9 @@ struct arizona_pdata {
 	/** Internal pull on GPIO5 is disabled when used for jack detection */
 	bool jd_gpio5_nopull;
 
+	/** JD2 IRQ is used for jack detection */
+	bool jd2_irq;
+
 	/** set to true if jackdet contact opens on insert */
 	bool jd_invert;
 
@@ -317,6 +320,9 @@ struct arizona_pdata {
 	/* If lrclk_adv is set then in dsp-a mode,
 	fsync is shifted left by half bclk */
 	int lrclk_adv[ARIZONA_MAX_AIF];
+
+	/* Report headset state as an input switch event */
+	bool report_to_input;
 };
 
 #endif

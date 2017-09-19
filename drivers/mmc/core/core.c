@@ -67,7 +67,7 @@ static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
  * performance cost, and for other reasons may not always be desired.
  * So we allow it it to be disabled.
  */
-bool use_spi_crc = 0;
+bool use_spi_crc = 1;
 module_param(use_spi_crc, bool, 0);
 
 /*
@@ -1646,10 +1646,6 @@ EXPORT_SYMBOL(mmc_start_req);
  */
 void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 {
-#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
-	if (mmc_bus_needs_resume(host))
-		mmc_resume_bus(host);
-#endif
 	__mmc_start_req(host, mrq);
 	mmc_wait_for_req_done(host, mrq);
 }
@@ -2046,6 +2042,10 @@ void mmc_get_card(struct mmc_card *card)
 {
 	pm_runtime_get_sync(&card->dev);
 	mmc_claim_host(card->host);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	if (mmc_bus_needs_resume(card->host))
+		mmc_resume_bus(card->host);
+#endif
 }
 EXPORT_SYMBOL(mmc_get_card);
 
@@ -4151,6 +4151,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		spin_unlock_irqrestore(&host->lock, flags);
 
 		if (!(host->caps & MMC_CAP_NEEDS_POLL) &&
+			!(host->caps2 & MMC_CAP2_NONHOTPLUG) &&
 				work_busy(&host->detect.work)) {
 			pr_err("%s: %s: card detection in progress\n",
 					__func__, mmc_hostname(host));

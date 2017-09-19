@@ -115,6 +115,31 @@
 		    };
 	};
 
+	ltr559_int_pin {
+		ltr559_default: ltr559_default {
+			mux {
+				pins = "gpio46";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio46";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		ltr559_sleep: ltr559_sleep {
+		      mux {
+			      pins = "gpio46";
+			      function = "gpio";
+		      };
+		      config {
+			      pins = "gpio46";
+			      drive-strength = <2>;
+			      bias-pull-up;
+		      };
+	      };
+	};
+
 	tlmm_gpio_key {
 		gpio_key_active: gpio_key_active {
 			mux {
@@ -164,153 +189,6 @@
 				pins = "gpio97";
 				drive-strength = <8>;
 				bias-disable;
-			};
-		};
-	};
-
-	fps: fps {
-		rst_active: rst_active {
-			/* RESET */
-			mux {
-				pins = "gpio127";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio127";
-				drive-strength = <2>; /* 2 MA */
-				bias-pull-up; /* pull up */
-				output-high;
-			};
-		};
-
-		rst_suspend: rst_suspend{
-			/* RESET */
-			mux {
-				pins = "gpio127";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio127";
-				drive-strength = <2>; /* 2 MA */
-				bias-pull-up; /* pull up */
-				output-high;
-			};
-		};
-
-		int_active: int_active {
-			/* INTERRUPT */
-			mux {
-				pins = "gpio128";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio128";
-				drive-strength = <2>; /* 2 MA */
-				input-enable;
-			};
-		};
-
-		int_suspend: int_suspend{
-			/* INTERRUPT */
-			mux {
-				pins = "gpio128";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio128";
-				drive-strength = <2>; /* 2 MA */
-				input-enable;
-			};
-		};
-
-		ldo_en_active: ldo_en_active {
-			/* LDO_EN */
-			mux {
-				pins = "gpio132";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio132";
-				drive-strength = <2>; /* 2 MA */
-				bias-pull-up; /* pull up */
-				output-high;
-			};
-		};
-
-		ldo_en_suspend: ldo_en_suspend{
-			/* LDO_EN */
-			mux {
-				pins = "gpio132";
-				function = "gpio";
-			};
-
-			config {
-				pins = "gpio132";
-				drive-strength = <2>; /* 2 MA */
-				bias-pull-up; /* pull up */
-				output-high;
-			};
-		};
-
-	};
-
-	spi_6 {
-		spi_6_active: spi_6_active {
-			mux {
-				/* MOSI, MISO, CLK */
-				pins = "gpio20", "gpio21", "gpio23";
-				function = "blsp_spi6";
-			};
-
-			config {
-				pins = "gpio20", "gpio21", "gpio23";
-				drive-strength = <12>; /* 12 MA */
-				bias-disable = <0>; /* No PULL */
-			};
-		};
-
-		spi_6_sleep: spi_6_sleep {
-			mux {
-				/* MOSI, MISO, CLK */
-				pins = "gpio20", "gpio21", "gpio23";
-				function = "blsp_spi6";
-			};
-
-			config {
-				pins = "gpio20", "gpio21", "gpio23";
-				drive-strength = <2>; /* 2 MA */
-				bias-pull-down; /* PULL Down */
-			};
-		};
-
-		spi6_cs0_active: cs0_active {
-			mux {
-				pins = "gpio22";
-				function = "blsp_spi6";
-			};
-
-			config {
-				pins = "gpio22";
-				drive-strength = <2>;
-				bias-disable = <0>;
-			};
-		};
-
-		spi6_cs0_sleep: cs0_sleep {
-			mux {
-				pins = "gpio22";
-				function = "blsp_spi6";
-			};
-
-			config {
-				pins = "gpio22";
-				drive-strength = <2>;
-				bias-disable = <0>;
 			};
 		};
 	};
@@ -397,4 +275,31 @@
 			};
 	};
 
+	/delete-node/ pri-tlmm-lines;
+	pri-tlmm-lines {
+		pri_tlmm_lines_act: pri_tlmm_lines_act {
+			mux {
+				pins = "gpio85", "gpio86", "gpio88";
+				function = "pri_mi2s";
+			};
+
+			config {
+				pins = "gpio85", "gpio86", "gpio88";
+				drive-strength = <8>;
+			};
+		};
+
+		pri_tlmm_lines_sus: pri_tlmm_lines_sus {
+			mux {
+				pins = "gpio85", "gpio86", "gpio88";
+				function = "pri_mi2s";
+			};
+
+			config {
+				pins = "gpio85", "gpio86", "gpio88";
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+	};
 };

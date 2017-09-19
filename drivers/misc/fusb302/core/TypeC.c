@@ -861,12 +861,17 @@ void StateMachineAttachWaitSource(void)
 #ifdef FSC_HAVE_SNK
 void StateMachineAttachedSink(void)
 {
+	USBTypeCCurrent SinkCurrentOld;
 	if (Registers.Status.I_COMP_CHNG == 1) {
 		if ((!IsPRSwap) && (IsHardReset == FALSE) && VbusUnder5V())
 			SetStateDelayUnattached();
 	}
-	UpdateSinkCurrent();
-
+	SinkCurrentOld = SinkCurrent;
+        UpdateSinkCurrent();
+	if (SinkCurrentOld != SinkCurrent) {
+		FUSB_LOG("Type C Rp changed!Google dual port charger ?\n");
+		power_supply_changed(&usbc_psy);
+	}
 }
 #endif // FSC_HAVE_SNK
 
@@ -1578,6 +1583,7 @@ void SetStateAttachedSink(void)
 	Registers.Measure.MEAS_VBUS = 1;
 	Registers.Measure.MDAC = VBUS_MDAC_2p6;
 	Registers.Mask.M_COMP_CHNG = 0;
+	Registers.Mask.M_BC_LVL = 0;
 	/* TODO: PACK Register Map Because:
 	 * Large block writes are faster if there is a delay between I2C packets */
 	DeviceWrite(regMeasure, 1, &Registers.Measure.byte);
@@ -1962,6 +1968,9 @@ void SetStateUnattachedDebugSource(void)
 
 void updateSourceCurrent(void)
 {
+	// Mot products always have a 500 mA limit so use default
+	SourceCurrent = utccDefault;
+
 	switch (SourceCurrent) {
 	case utccDefault:
 		Registers.Control.HOST_CUR = 0b01;	// Set the host current to reflect the default USB power

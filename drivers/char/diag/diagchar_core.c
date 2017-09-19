@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -388,6 +388,27 @@ static uint32_t diag_translate_kernel_to_user_mask(uint32_t peripheral_mask)
 	return ret;
 }
 
+void diag_clear_masks(struct diag_md_session_t *info)
+{
+	int ret;
+	char cmd_disable_log_mask[] = { 0x73, 0, 0, 0, 0, 0, 0, 0};
+	char cmd_disable_msg_mask[] = { 0x7D, 0x05, 0, 0, 0, 0, 0, 0};
+	char cmd_disable_event_mask[] = { 0x60, 0};
+
+	DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
+	"diag: %s: masks clear request upon %s\n", __func__,
+	((info) ? "ODL exit" : "USB Disconnection"));
+
+	ret = diag_process_apps_masks(cmd_disable_log_mask,
+			sizeof(cmd_disable_log_mask), info);
+	ret = diag_process_apps_masks(cmd_disable_msg_mask,
+			sizeof(cmd_disable_msg_mask), info);
+	ret = diag_process_apps_masks(cmd_disable_event_mask,
+			sizeof(cmd_disable_event_mask), info);
+	DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
+	"diag:%s: masks cleared successfully\n", __func__);
+}
+
 static void diag_close_logging_process(const int pid)
 {
 	int i;
@@ -399,8 +420,16 @@ static void diag_close_logging_process(const int pid)
 	if (!session_info)
 		return;
 
+	diag_clear_masks(session_info);
+
+	mutex_lock(&driver->diag_maskclear_mutex);
+	driver->mask_clear = 1;
+	mutex_unlock(&driver->diag_maskclear_mutex);
+
+	mutex_lock(&driver->diagchar_mutex);
 	session_peripheral_mask = session_info->peripheral_mask;
 	diag_md_session_close(session_info);
+	mutex_unlock(&driver->diagchar_mutex);
 	for (i = 0; i < NUM_MD_SESSIONS; i++)
 		if (MD_PERIPHERAL_MASK(i) & session_peripheral_mask)
 			diag_mux_close_peripheral(DIAG_LOCAL_PROC, i);
@@ -474,9 +503,14 @@ static int diag_remove_client_entry(struct file *file)
 }
 static int diagchar_close(struct inode *inode, struct file *file)
 {
+	int ret;
 	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: process exit %s\n",
 		current->comm);
-	return diag_remove_client_entry(file);
+	ret = diag_remove_client_entry(file);
+	mutex_lock(&driver->diag_maskclear_mutex);
+	driver->mask_clear = 0;
+	mutex_unlock(&driver->diag_maskclear_mutex);
+	return ret;
 }
 
 void diag_record_stats(int type, int flag)
@@ -3331,7 +3365,7 @@ static int diagchar_cleanup(void)
 static int __init diagchar_init(void)
 {
 	dev_t dev;
-	int error, ret;
+	int error, ret, i;
 
 	pr_debug("diagfwd initializing ..\n");
 	ret = 0;
@@ -3373,10 +3407,12 @@ static int __init diagchar_init(void)
 	non_hdlc_data.len = 0;
 	mutex_init(&driver->hdlc_disable_mutex);
 	mutex_init(&driver->diagchar_mutex);
+	mutex_init(&driver->diag_maskclear_mutex);
 	mutex_init(&driver->diag_file_mutex);
 	mutex_init(&driver->delayed_rsp_mutex);
 	mutex_init(&apps_data_mutex);
-	mutex_init(&driver->diagfwd_channel_mutex);
+	for (i = 0; i < NUM_PERIPHERALS; i++)
+		mutex_init(&driver->diagfwd_channel_mutex[i]);
 	init_waitqueue_head(&driver->wait_q);
 	INIT_WORK(&(driver->diag_drain_work), diag_drain_work_fn);
 	INIT_WORK(&(driver->update_user_clients),

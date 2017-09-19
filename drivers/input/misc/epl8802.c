@@ -74,8 +74,8 @@
 #define ALS_LOW_THRESHOLD		1000
 #define ALS_HIGH_THRESHOLD		3000
 
-#define PS_LOW_THRESHOLD		14799/*PS low threshold*/
-#define PS_HIGH_THRESHOLD		15199/*PS high threshold*/
+#define PS_LOW_THRESHOLD		29599/*PS low threshold*/
+#define PS_HIGH_THRESHOLD		29999/*PS high threshold*/
 
 #define LUX_PER_COUNT			400 /*ALS lux per count, 400/1000=0.4*/
 #define ALS_LEVEL    16
@@ -210,7 +210,7 @@ static int epl_sensor_als_dyn_report(struct epl_sensor_priv *epld,
  *  PS DYN K ONE
  ******************************************************************************/
 #if PS_DYN_K_ONE
-#define PS_MAX_CT       15200
+#define PS_MAX_CT       30000
 #define PS_MAX_IR       50000
 #define PS_DYN_H_OFFSET 2000
 #define PS_DYN_L_OFFSET 1600
@@ -1037,6 +1037,9 @@ void epl_sensor_enable_ps(struct epl_sensor_priv *epld, int enable)
 #endif
 		} else {
 			/*wake_unlock(&ps_lock);*/
+			/*report a invalid value when disable sensor*/
+			input_report_abs(epld->ps_input_dev, ABS_DISTANCE, -1);
+			input_sync(epld->als_input_dev);
 		}
 		epl_sensor_fast_update(epld->client);
 		epl_sensor_update_mode(epld->client);
@@ -2837,7 +2840,7 @@ static int epl_sensor_setup_psensor(struct epl_sensor_priv *epld)
 	epld->ps_input_dev->name = ElanPsensorName[epld->id];
 
 	set_bit(EV_ABS, epld->ps_input_dev->evbit);
-	input_set_abs_params(epld->ps_input_dev, ABS_DISTANCE, 0, 10, 0, 0);
+	input_set_abs_params(epld->ps_input_dev, ABS_DISTANCE, -1, 10, 0, 0);
 	err = input_register_device(epld->ps_input_dev);
 	if (err < 0) {
 		LOG_ERR("could not register ps input device\n");

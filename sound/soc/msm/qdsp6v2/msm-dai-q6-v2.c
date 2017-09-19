@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1725,6 +1725,11 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 			pr_err("%s: rx slot not found\n", __func__);
 			return -EINVAL;
 		}
+		if (rx_num > AFE_PORT_MAX_AUDIO_CHAN_CNT) {
+			pr_err("%s: invalid rx num %d\n", __func__, rx_num);
+			return -EINVAL;
+		}
+
 		for (i = 0; i < rx_num; i++) {
 			dai_data->port_config.slim_sch.shared_ch_mapping[i] =
 			    rx_slot[i];
@@ -1755,6 +1760,11 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 			pr_err("%s: tx slot not found\n", __func__);
 			return -EINVAL;
 		}
+		if (tx_num > AFE_PORT_MAX_AUDIO_CHAN_CNT) {
+			pr_err("%s: invalid tx num %d\n", __func__, tx_num);
+			return -EINVAL;
+		}
+
 		for (i = 0; i < tx_num; i++) {
 			dai_data->port_config.slim_sch.shared_ch_mapping[i] =
 			    tx_slot[i];
@@ -3047,7 +3057,16 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 	struct msm_dai_q6_dai_data *dai_data = &mi2s_dai_config->mi2s_dai_data;
 	struct afe_param_id_i2s_cfg *i2s = &dai_data->port_config.i2s;
 
-	dai_data->channels = params_channels(params);
+	/*hack I2S DAI config for packed 16x4 mode*/
+	if (params_channels(params) == 4 &&
+	    params_format(params) == SNDRV_PCM_FORMAT_S16_LE) {
+		pr_debug("%s: using 2-channel I2S for 16x4 capture\n",
+			__func__);
+		dai_data->channels = 2;
+	} else {
+		dai_data->channels = params_channels(params);
+	}
+
 	switch (dai_data->channels) {
 	case 8:
 	case 7:
@@ -3111,13 +3130,25 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
 	case SNDRV_PCM_FORMAT_SPECIAL:
-		dai_data->port_config.i2s.bit_width = 16;
-		dai_data->bitwidth = 16;
+		/*hack I2S config for packed 16x4 mode*/
+		if (params_channels(params) > 2) {
+			pr_debug("%s: using 32-bit I2S for 16x4 capture\n",
+				__func__);
+			dai_data->port_config.i2s.bit_width = 32;
+			dai_data->bitwidth = 32;
+		} else {
+			dai_data->port_config.i2s.bit_width = 16;
+			dai_data->bitwidth = 16;
+		}
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
 	case SNDRV_PCM_FORMAT_S24_3LE:
 		dai_data->port_config.i2s.bit_width = 24;
 		dai_data->bitwidth = 24;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		dai_data->port_config.i2s.bit_width = 32;
+		dai_data->bitwidth = 32;
 		break;
 	default:
 		pr_err("%s: format %d\n",
@@ -3421,21 +3452,24 @@ static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 		.playback = {
 			.stream_name = "Quinary MI2S Playback",
 			.aif_name = "QUIN_MI2S_RX",
-			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
-			SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_96000 |
-			SNDRV_PCM_RATE_192000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+			SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |
+			SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+				   SNDRV_PCM_FMTBIT_S24_LE,
 			.rate_min =     8000,
 			.rate_max =     192000,
 		},
 		.capture = {
 			.stream_name = "Quinary MI2S Capture",
 			.aif_name = "QUIN_MI2S_TX",
-			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
-			SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+			SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |
+			SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+				   SNDRV_PCM_FMTBIT_S24_LE,
 			.rate_min =     8000,
-			.rate_max =     48000,
+			.rate_max =     192000,
 		},
 		.ops = &msm_dai_q6_mi2s_ops,
 		.id = MSM_QUIN_MI2S,

@@ -231,7 +231,8 @@ dtb-$(CONFIG_ARCH_MSM8920) += msm8920-pmi8937-cdp.dtb \
 	msm8920-pmi8950-cdp.dtb \
 	msm8920-pmi8950-mtp.dtb \
 	msm8920-pmi8937-rcm.dtb \
-	msm8920-pmi8950-rcm.dtb
+	msm8920-pmi8950-rcm.dtb \
+	msm8920-pmi8940-qrd-sku7.dtb
 
 dtb-$(CONFIG_ARCH_MSM8940) += msm8940-pmi8937-cdp.dtb \
 	msm8940-pmi8937-mtp.dtb \
@@ -277,19 +278,51 @@ dtb-$(CONFIG_ARCH_MSM8953) += msm8953-potter-p0a.dtb \
 	msm8953-potter-p1b.dtb \
 	msm8953-potter-p2a.dtb \
 	msm8953-potter-p2a2.dtb \
-	msm8953-potter-p2b.dtb
+	msm8953-potter-p2b.dtb \
+	msm8953-potter-p3a.dtb
 endif
 
 ifeq ($(CONFIG_ALBUS_DTB),y)
 dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p0.dtb
 dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p1.dtb
 dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p1a1.dtb
+dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p1b.dtb
+dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p2.dtb
+dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p3.dtb
+dtb-$(CONFIG_ARCH_MSM8953) += msm8953-albus-p4.dtb
+endif
+
+ifeq ($(CONFIG_SANDERS_DTB),y)
+dtb-$(CONFIG_ARCH_MSM8953) += msm8953-sanders-p1.dtb \
+	msm8953-sanders-p2.dtb \
+	msm8953-sanders-p3.dtb \
+	msm8953-sanders-p4.dtb
+endif
+
+ifeq ($(CONFIG_PERRY_DTB),y)
+dtb-$(CONFIG_ARCH_MSM8937) += msm8917-perry-p0.dtb
+dtb-$(CONFIG_ARCH_MSM8920) += msm8920-perry-p1.dtb
+endif
+
+ifeq ($(CONFIG_OWENS_DTB),y)
+dtb-$(CONFIG_ARCH_MSM8920) += msm8920-owens-p0.dtb
+dtb-$(CONFIG_ARCH_MSM8920) += msm8920-owens-p1.dtb
 endif
 
 ifeq ($(CONFIG_CEDRIC_DTB),y)
 dtb-$(CONFIG_ARCH_MSM8937) += msm8937-cedric-p1.dtb \
 	msm8937-cedric-p2.dtb \
-	msm8937-cedric-p3.dtb
+	msm8937-cedric-p3.dtb \
+	msm8937-cedric-p4.dtb \
+	msm8937-cedric-p5.dtb
+endif
+
+ifeq ($(CONFIG_MONTANA_DTB),y)
+dtb-$(CONFIG_ARCH_MSM8937) += msm8937-montana-p0.dtb \
+	msm8937-montana-p1a.dtb \
+	msm8937-montana-p1b.dtb \
+	msm8937-montana-p2.dtb \
+	msm8937-montana-p3.dtb
 endif
 
 dtb-$(CONFIG_ARCH_MDM9607) += mdm9607-rumi.dtb \
