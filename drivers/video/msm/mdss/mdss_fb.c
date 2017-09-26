@@ -2,7 +2,7 @@
  * Core MDSS framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -1102,9 +1102,9 @@ __PARAM_SYSFS_DEFINITION(cabc, PARAM_CABC_ID)
 
 static struct device_attribute param_attrs[PARAM_ID_NUM] = {
 	__ATTR(hbm, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP, hbm_show, hbm_store),
-	__ATTR(acl_mode, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+	__ATTR(acl, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
 		acl_show, acl_store),
-	__ATTR(cabc_mode, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+	__ATTR(cabc, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
 		cabc_show, cabc_store),
 };
 
@@ -3045,16 +3045,19 @@ static int mdss_fb_release_all(struct fb_info *info, bool release_all)
 		event.info = info;
 		event.data = &blank;
 
-		fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
+		if (mfd->index == 0)
+			fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
 
 		ret = mdss_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 			mfd->op_enable);
 		if (ret) {
-			fb_notifier_call_chain(FB_R_EARLY_EVENT_BLANK, &event);
+			if (mfd->index == 0)
+				fb_notifier_call_chain(FB_R_EARLY_EVENT_BLANK,
+					&event);
 			pr_err("can't turn off fb%d! rc=%d current process=%s pid=%d\n",
 			      mfd->index, ret, task->comm, current->tgid);
 			return ret;
-		} else
+		} else if (mfd->index == 0)
 			fb_notifier_call_chain(FB_EVENT_BLANK, &event);
 
 		if (mfd->fb_ion_handle)
@@ -4483,8 +4486,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_2;
 	}
 
-	sync_fence_install(rel_fence, rel_fen_fd);
-
 	ret = copy_to_user(buf_sync->rel_fen_fd, &rel_fen_fd, sizeof(int));
 	if (ret) {
 		pr_err("%s: copy_to_user failed\n", sync_pt_data->fence_name);
@@ -4521,8 +4522,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_3;
 	}
 
-	sync_fence_install(retire_fence, retire_fen_fd);
-
 	ret = copy_to_user(buf_sync->retire_fen_fd, &retire_fen_fd,
 			sizeof(int));
 	if (ret) {
@@ -4533,7 +4532,11 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_3;
 	}
 
+	sync_fence_install(retire_fence, retire_fen_fd);
+
 skip_retire_fence:
+	sync_fence_install(rel_fence, rel_fen_fd);
+
 	mutex_unlock(&sync_pt_data->sync_mutex);
 
 	if (buf_sync->flags & MDP_BUF_SYNC_FLAG_WAIT)

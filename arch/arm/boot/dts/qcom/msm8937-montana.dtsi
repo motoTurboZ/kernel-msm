@@ -423,6 +423,9 @@
 	qcom,temp-cool-current-ma = <600>;
 	qcom,temp-slightly-cool-current-ma = <600>;
 	qcom,slightly-cool-temp-c = <15>;
+	qcom,enable-charging-limit;
+	qcom,upper-limit-capacity = <80>;
+	qcom,lower-limit-capacity = <60>;
 };
 
 &pmi8950_fg {
@@ -437,6 +440,8 @@
 };
 
 &usb_otg {
+	qcom,hsusb-otg-phy-init-seq =
+		<0x33 0x80 0x38 0x81 0x2f 0x82 0x13 0x83 0xffffffff>;
 	qcom,chg-dcp-icl = <1800>;
 };
 
@@ -462,7 +467,3 @@
 	qcom,vmax-mv = <2552>;
 };
 
-&usb_otg {
-	qcom,hsusb-otg-phy-init-seq =
-		<0x00 0x80 0x2c 0x81 0x20 0x82 0x13 0x83 0xffffffff>;
-};
