@@ -13,12 +13,11 @@
 #include "msm8953-moto-common.dtsi"
 #include "dsi-panel-mot-smd-549-1080p-alb-cmd.dtsi"
 #include "dsi-panel-mot-mod-fwvga-video.dtsi"
-#include "msm8953-camera-sensor-mot-albus.dtsi"
-#include "msm8953-albus-pinctrl.dtsi"
+#include "msm8953-johnson-pinctrl.dtsi"
 
  / {
-	model = "albus";
-	compatible = "qcom,msm8953-albus", "qcom,msm8953-moto",
+	model = "johnson";
+	compatible = "qcom,msm8953-johnson", "qcom,msm8953-moto",
 			"qcom,msm8953";
 	aliases {
 		spi7 = &spi_7;
@@ -129,30 +128,6 @@
 			pinctrl-0 = <&nfc_irq_default &nfc_ven_default &nfc_firm_default>;
 		};
 
-		drv2624: drv2624@5a {
-			compatible = "ti,drv2624";
-			reg = <0x5A>;
-			/* voltage = *_voltage x 22 mV */
-			/* 2V for now */
-			ti,rated_voltage = /bits/ 8 <0x57>;
-			ti,overdrive_voltage = /bits/ 8 <0x8D>;
-			ti,rated_voltage_reduced = /bits/ 8 <0x1A>;
-			ti,overdrive_voltage_reduced = /bits/ 8 <0x1C>;
-			/* LRA period = lra_freq x 24.39 us */
-			/* 175 Hz for now */
-			ti,lra_freq = /bits/ 8 <0xAF>;
-			ti,lra_drive;
-			ti,auto_cal;
-			ti,auto_cal_time = /bits/ 8 <0x01>;
-			/* sample time 200us  */
-			ti,sample_time = /bits/ 8 <0x04>;
-			ti,nrst-gpio = <&tlmm 110 0>;
-			ti,npwr-gpio = <&tlmm 69 0>;
-			ti,nvctrl-gpio = <&tlmm 13 0>;
-			pinctrl-names = "haptic_default", "haptic_sleep";
-			pinctrl-0 = <&haptic_reset_active &haptic_pwr_active>;
-			pinctrl-1 = <&haptic_reset_sleep &haptic_pwr_sleep>;
-		};
 
 		cs35l35@40 {
 			compatible = "cirrus,cs35l35";
@@ -395,6 +370,7 @@
 		mmi,ospl-tune-index = <4 5 6 7>;
 		mmi,ospl-afe-port-id = <16384 16387>;
 		mmi,ospl-left-feedback;
+		mmi,ospl-volume-control;
 	};
 
 	qcom,msm-dai-mi2s {

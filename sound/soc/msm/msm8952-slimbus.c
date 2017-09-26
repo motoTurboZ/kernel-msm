@@ -814,6 +814,9 @@ static int quin_mi2s_get_format(void)
 	case SNDRV_PCM_FORMAT_S24_LE:
 		value = 1;
 		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		value = 2;
+		break;
 	default:
 		value = 0;
 		break;
@@ -840,6 +843,9 @@ static int msm_quin_mi2s_format_put(struct snd_kcontrol *kcontrol,
 	case 1:
 		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S24_LE;
 		break;
+	case 2:
+		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S32_LE;
+		break;
 	default:
 		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S16_LE;
 		break;
@@ -858,6 +864,9 @@ static int msm_quin_mi2s_ch_put(struct snd_kcontrol *kcontrol,
 		break;
 	case 1:
 		msm_quin_mi2s_ch = 2;
+		break;
+	case 2:
+		msm_quin_mi2s_ch = 4;
 		break;
 	default:
 		msm_quin_mi2s_ch = 2;
@@ -879,6 +888,9 @@ static int msm_quin_mi2s_ch_get(struct snd_kcontrol *kcontrol,
 		break;
 	case 2:
 		ucontrol->value.integer.value[0] = 1;
+		break;
+	case 4:
+		ucontrol->value.integer.value[0] = 2;
 		break;
 	default:
 		ucontrol->value.integer.value[0] = 1;
@@ -1448,28 +1460,16 @@ static const struct soc_enum msm_snd_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(slim6_rx_ch_text), slim6_rx_ch_text),
 };
 
-static char const *msm_quat_mi2s_ch_text[] = {"One", "Two", "Four"};
+static char const *msm_mi2s_ch_text[] = {"One", "Two", "Four"};
 
-static const char *const msm_quat_mi2s_rate_text[] = {"KHZ_16", "KHZ_32",
+static const char *const msm_mi2s_rate_text[] = {"KHZ_16", "KHZ_32",
 			"KHZ_48", "KHZ_96", "KHZ_192"};
-static const char *const msm_quat_mi2s_format_text[] = {"S16_LE", "S24_LE", "S32_LE"};
+static const char *const msm_mi2s_format_text[] = {"S16_LE", "S24_LE", "S32_LE"};
 
-static const struct soc_enum msm8996_quat_mi2s_enum[] = {
-		SOC_ENUM_SINGLE_EXT(5, msm_quat_mi2s_rate_text),
-		SOC_ENUM_SINGLE_EXT(3, msm_quat_mi2s_format_text),
-		SOC_ENUM_SINGLE_EXT(3, msm_quat_mi2s_ch_text),
-};
-
-static char const *msm_quin_mi2s_ch_text[] = {"One", "Two"};
-
-static const char *const msm_quin_mi2s_rate_text[] = {"KHZ_16", "KHZ_32",
-			"KHZ_48", "KHZ_96", "KHZ_192"};
-static const char *const msm_quin_mi2s_format_text[] = {"S16_LE", "S24_LE"};
-
-static const struct soc_enum msm8996_quin_mi2s_enum[] = {
-		SOC_ENUM_SINGLE_EXT(5, msm_quin_mi2s_rate_text),
-		SOC_ENUM_SINGLE_EXT(2, msm_quin_mi2s_format_text),
-		SOC_ENUM_SINGLE_EXT(2, msm_quin_mi2s_ch_text),
+static const struct soc_enum msm8996_mi2s_enum[] = {
+		SOC_ENUM_SINGLE_EXT(5, msm_mi2s_rate_text),
+		SOC_ENUM_SINGLE_EXT(3, msm_mi2s_format_text),
+		SOC_ENUM_SINGLE_EXT(3, msm_mi2s_ch_text),
 };
 
 static const char *const btsco_rate_text[] = {"BTSCO_RATE_8KHZ",
@@ -1518,20 +1518,20 @@ static const struct snd_kcontrol_new msm_snd_controls[] = {
 };
 
 static const struct snd_kcontrol_new msm_quat_mi2s_snd_controls[] = {
-	SOC_ENUM_EXT("QUAT_MI2S SampleRate", msm8996_quat_mi2s_enum[0],
+	SOC_ENUM_EXT("MODS_MI2S SampleRate", msm8996_mi2s_enum[0],
 			msm_quat_mi2s_rate_get, msm_quat_mi2s_rate_put),
-	SOC_ENUM_EXT("QUAT_MI2S Format", msm8996_quat_mi2s_enum[1],
+	SOC_ENUM_EXT("MODS_MI2S Format", msm8996_mi2s_enum[1],
 			msm_quat_mi2s_format_get, msm_quat_mi2s_format_put),
-	SOC_ENUM_EXT("QUAT_MI2S Channels", msm8996_quat_mi2s_enum[2],
+	SOC_ENUM_EXT("MODS_MI2S Channels", msm8996_mi2s_enum[2],
 			msm_quat_mi2s_ch_get, msm_quat_mi2s_ch_put),
 };
 
 static const struct snd_kcontrol_new msm_quin_mi2s_snd_controls[] = {
-	SOC_ENUM_EXT("QUIN_MI2S SampleRate", msm8996_quin_mi2s_enum[0],
+	SOC_ENUM_EXT("MODS_MI2S SampleRate", msm8996_mi2s_enum[0],
 			msm_quin_mi2s_rate_get, msm_quin_mi2s_rate_put),
-	SOC_ENUM_EXT("QUIN_MI2S Format", msm8996_quin_mi2s_enum[1],
+	SOC_ENUM_EXT("MODS_MI2S Format", msm8996_mi2s_enum[1],
 			msm_quin_mi2s_format_get, msm_quin_mi2s_format_put),
-	SOC_ENUM_EXT("QUIN_MI2S Channels", msm8996_quin_mi2s_enum[2],
+	SOC_ENUM_EXT("MODS_MI2S Channels", msm8996_mi2s_enum[2],
 			msm_quin_mi2s_ch_get, msm_quin_mi2s_ch_put),
 };
 
@@ -1574,12 +1574,19 @@ int msm_quin_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels = hw_param_interval(params,
 					SNDRV_PCM_HW_PARAM_CHANNELS);
+	bool albus_audio = of_property_read_bool(rtd->card->dev->of_node,
+					    "qcom,albus-audio");
 
-	pr_debug("%s: channel:%d\n", __func__, msm_quin_mi2s_ch);
-	rate->min = rate->max = msm_quin_mi2s_sample_rate;
-	channels->min = channels->max = msm_quin_mi2s_ch;
-	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
-				msm_quin_mi2s_bit_format);
+	/* Don't fix up be_hw params unless QUIN MI2S is used for mods audio */
+	if (albus_audio) {
+		pr_debug("%s: channel:%d\n", __func__, msm_quin_mi2s_ch);
+		rate->min = rate->max = msm_quin_mi2s_sample_rate;
+		channels->min = channels->max = msm_quin_mi2s_ch;
+		param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+					msm_quin_mi2s_bit_format);
+	} else
+		return msm_be_hw_params_fixup(rtd, params);
+
 	return 0;
 }
 
@@ -1661,6 +1668,14 @@ int msm_quat_mi2s_snd_hw_params(struct snd_pcm_substream *substream,
 int msm_quin_mi2s_snd_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	bool albus_audio = of_property_read_bool(rtd->card->dev->of_node,
+					    "qcom,albus-audio");
+
+	/* Return default hw params unless QUIN MI2S is used for mods audio */
+	if (!albus_audio)
+		return msm_mi2s_snd_hw_params(substream, params);
+
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
 	return 0;
@@ -2184,21 +2199,47 @@ static int quat_mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 
 static int quin_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 {
-	int ret = 0;
+	int ret = 0, format, rate;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	bool albus_audio = of_property_read_bool(rtd->card->dev->of_node,
+					    "qcom,albus-audio");
+
 
 	if (enable) {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			mi2s_rx_clk.enable = enable;
 			mi2s_rx_clk.clk_id =
 				Q6AFE_LPASS_CLK_ID_QUI_MI2S_IBIT;
-			if ((mi2s_rx_bit_format == SNDRV_PCM_FORMAT_S24_LE) ||
-				(mi2s_rx_bit_format ==
-					SNDRV_PCM_FORMAT_S24_3LE))
+
+			/*
+			 * Configure Mod specific clk control only when
+			 * QUIN MI2S is used for mods audio.
+			 */
+			if (albus_audio) {
+				rate = quin_mi2s_get_rate();
+				if (msm_quin_mi2s_ch > 2) {
+					pr_debug("%s: choosing 32-bit MI2S playback "
+						"clk_ctl for 16x4\n", __func__);
+					format = 2;
+				} else {
+					format = quin_mi2s_get_format();
+				}
+
 				mi2s_rx_clk.clk_freq_in_hz =
-					Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ;
-			else
-				mi2s_rx_clk.clk_freq_in_hz =
-					Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+					msm_quat_clk_freq_in_hz[rate][format];
+				pr_debug("%s: set quin clock freq: %d", __func__,
+					mi2s_rx_clk.clk_freq_in_hz);
+			} else {
+				if ((mi2s_rx_bit_format == SNDRV_PCM_FORMAT_S24_LE) ||
+					(mi2s_rx_bit_format ==
+						SNDRV_PCM_FORMAT_S24_3LE))
+					mi2s_rx_clk.clk_freq_in_hz =
+						Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ;
+				else
+					mi2s_rx_clk.clk_freq_in_hz =
+						Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+			}
+
 			ret = afe_set_lpass_clock_v2(
 					AFE_PORT_ID_QUINARY_MI2S_RX,
 					&mi2s_rx_clk);
@@ -2206,8 +2247,29 @@ static int quin_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 			mi2s_tx_clk.enable = enable;
 			mi2s_tx_clk.clk_id =
 				Q6AFE_LPASS_CLK_ID_QUI_MI2S_IBIT;
-			mi2s_tx_clk.clk_freq_in_hz =
-				Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+
+			/*
+			 * Configure Mod specific clk control only when
+			 * QUIN MI2S is used for mods audio.
+			 */
+			if (albus_audio) {
+				rate = quin_mi2s_get_rate();
+				if (msm_quin_mi2s_ch > 2) {
+					pr_debug("%s: choosing 32-bit MI2S capture "
+						"clk_ctl for 16x4\n", __func__);
+					format = 2;
+				} else {
+					format = quin_mi2s_get_format();
+				}
+				mi2s_tx_clk.clk_freq_in_hz =
+					msm_quat_clk_freq_in_hz[rate][format];
+				pr_debug("%s: set quin clock freq: %d", __func__,
+					mi2s_tx_clk.clk_freq_in_hz);
+			} else {
+				mi2s_tx_clk.clk_freq_in_hz =
+					Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+			}
+
 			ret = afe_set_lpass_clock_v2(
 					AFE_PORT_ID_QUINARY_MI2S_TX,
 					&mi2s_tx_clk);
@@ -2418,15 +2480,19 @@ int msm_quin_mi2s_snd_startup(struct snd_pcm_substream *substream)
 	struct msm8952_asoc_mach_data *pdata =
 			snd_soc_card_get_drvdata(card);
 	int ret = 0, val = 0;
+	bool albus_audio = of_property_read_bool(card->dev->of_node,
+					    "qcom,albus-audio");
 
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
 
-	modbus_status.proto = MODBUS_PROTO_I2S;
-	modbus_status.active = true;
-
-	atomic_inc(&mods_mi2s_active);
-	modbus_ext_set_state(&modbus_status);
+	/* QUIN MI2S is only used for mods audio on Albus */
+	if (albus_audio) {
+		modbus_status.proto = MODBUS_PROTO_I2S;
+		modbus_status.active = true;
+		atomic_inc(&mods_mi2s_active);
+		modbus_ext_set_state(&modbus_status);
+	}
 
 	if (!q6core_is_adsp_ready()) {
 		pr_err("%s: adsp not ready\n", __func__);
@@ -2474,18 +2540,24 @@ void msm_quin_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_card *card = rtd->card;
 	struct modbus_ext_status modbus_status;
 	struct msm8952_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	bool albus_audio = of_property_read_bool(card->dev->of_node,
+					    "qcom,albus-audio");
 
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
 
-	if (!atomic_dec_and_test(&mods_mi2s_active)) {
-		pr_debug("%s: port users not zero don't shut down yet\n",
-				__func__);
-		return;
+	/* QUIN MI2S is only used for mods audio on Albus */
+	if (albus_audio) {
+		if (!atomic_dec_and_test(&mods_mi2s_active)) {
+			pr_debug("%s: port users not zero don't shutdown yet\n",
+					__func__);
+			return;
+		}
+
+		modbus_status.proto = MODBUS_PROTO_I2S;
+		modbus_status.active = false;
+		modbus_ext_set_state(&modbus_status);
 	}
-	modbus_status.proto = MODBUS_PROTO_I2S;
-	modbus_status.active = false;
-	modbus_ext_set_state(&modbus_status);
 
 	ret = quin_mi2s_sclk_ctl(substream, false);
 	if (ret < 0)
@@ -2903,7 +2975,7 @@ int marley_dai_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	struct snd_soc_card *card = codec->component.card;
 
-	aov_trigger_init(codec);
+	aov_trigger_register_notifier(codec);
 	ret = snd_soc_codec_set_pll(codec, MARLEY_FLL1_REFCLK,
 			ARIZONA_FLL_SRC_NONE,
 			0, 0);
@@ -3435,6 +3507,7 @@ static int msm8952_asoc_machine_probe(struct platform_device *pdev)
 			ret);
 		goto err;
 	}
+	aov_trigger_init();
 #endif
 	ret = msm8952_populate_dai_link_component_of_node(card);
 	if (ret) {

@@ -216,9 +216,15 @@
 			focaltech,fw-auto-cal;
 			focaltech,ignore-id-check;
 			focaltech,resume-in-workqueue;
-			config_modifier-names = "charger";
+			config_modifier-names = "charger", "fps";
 			config_modifier-charger {
 				enable-notification;
+			};
+			config_modifier-fps {
+				enable-notification;
+				fps-active {
+					touch-clip-area = <300 1870 800 1919 1>;
+				};
 			};
 		};
 	};
@@ -300,8 +306,8 @@
 			ltr,irq-gpio = <&tlmm 86 0x2>;
 			ltr,ps-threshold = <800>;
 			ltr,ps-hysteresis-threshold = <300>;
-			ltr,ps-nearoffset = <30>;
-			ltr,ps-faroffset = <25>;
+			ltr,ps-nearoffset = <20>;
+			ltr,ps-faroffset = <15>;
 			ltr,als-polling-time = <200>;
 			ltr,prox-sensor-name = "Rear Proximity sensor";
 		};
@@ -612,12 +618,12 @@
 };
 
 &pmi_haptic{
-	qcom,vmax-mv = <2545>;
+	qcom,vmax-mv = <1950>;
 	qcom,wave-play-rate-us = <4255>;
 	qcom,actuator-type = "lra";
 	qcom,wave-shape = "sine";
-	qcom,lra-auto-res-mode="qwd";
-	qcom,lra-high-z="opt1";
+	qcom,lra-auto-res-mode="none";
+	qcom,lra-high-z="none";
 	qcom,lra-res-cal-period = <4>;
 	qcom,correct-lra-drive-freq;
 	qcom,misc-trim-error-rc19p2-clk-reg-present;
@@ -810,9 +816,12 @@
 	qcom,usbid-disabled;
 	qcom,usbid-gpio-enabled;
 	qcom,force-aicl-rerun;
-	qcom,auto-voltage-comp-mv = <150>;
+	qcom,auto-voltage-comp-mv = <75>;
 	qcom,enable-hvdcp-9v;
 	qcom,enable-factory-wa;
+	qcom,enable-charging-limit;
+	qcom,upper-limit-capacity = <80>;
+	qcom,lower-limit-capacity = <60>;
 };
 
 /{
@@ -846,6 +855,8 @@
 	qcom,fg-cc-cv-threshold-mv = <4390>;
 	qcom,battery-data = <&mot_batterydata>;
 	qcom,low-batt-temp-comp;
+	qcom,cl-vbat-est-thr-uv = <300000>;
+	qcom,fg-force-restart-enable;
 };
 
 &pm8953_typec {

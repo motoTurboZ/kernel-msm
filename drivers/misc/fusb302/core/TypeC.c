@@ -2066,6 +2066,19 @@ CCTermType DecodeCCTerminationSource(void)
 	platform_delay_10us(25);	// Delay to allow measurement to settle
 	DeviceRead(regStatus0, 1, &Registers.Status.byte[4]);
 
+	// work around issue where default advertisement does not sense OPEN
+	if (Registers.Status.COMP == 0) {
+		FUSB_LOG("USBPD: DetectCCTerminationSource Run workaround\n");
+		SourceCurrent = utcc1p5A;
+		updateSourceCurrent();
+		updateSourceMDACHigh();
+		platform_delay_10us(25);	// Delay to allow measurement to settle
+		DeviceRead(regStatus0, 1, &Registers.Status.byte[4]);
+		SourceCurrent = utccDefault;
+		updateSourceCurrent();
+		updateSourceMDACHigh();
+	}
+
 	if (Registers.Status.COMP == 1) {
 		Termination = CCTypeOpen;
 		return Termination;
@@ -2585,6 +2598,8 @@ void setStateSource(FSC_BOOL vconn)
 {
 	sourceOrSink = SOURCE;
 	resetDebounceVariables();
+	// Mot products always have a 500 mA limit so use default
+	SourceCurrent = utccDefault;
 	updateSourceCurrent();
 	updateSourceMDACHigh();
 	Registers.Power.PWR = 0x7;	// Enable everything except internal oscillator

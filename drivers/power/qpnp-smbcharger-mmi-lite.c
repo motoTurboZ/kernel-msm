@@ -37,6 +37,10 @@
 #include <linux/batterydata-lib.h>
 #include <linux/msm_bcl.h>
 
+#define MAX_TEMP_C 60
+#define MIN_MAX_TEMP_C 47
+
+
 /* Mask/Bit helpers */
 #define _SMB_MASK(BITS, POS) \
 	((unsigned char)(((1 << (BITS)) - 1) << (POS)))
@@ -300,7 +304,7 @@ struct smbchg_chip {
 	int				charger_rate;
 	bool				usbid_disabled;
 	bool				usbid_gpio_enabled;
-	bool				demo_mode;
+	int				demo_mode;
 	bool				batt_therm_wa;
 	struct notifier_block		smb_reboot;
 	int				aicl_wait_retries;
@@ -319,6 +323,7 @@ struct smbchg_chip {
 	int				temp_slightly_cool_current_ma;
 	int				temp_allowed_fastchg_current_ma;
 	bool				enable_factory_wa;
+	int                         max_chrg_temp;
 };
 
 static struct smbchg_chip *the_chip;
@@ -3865,6 +3870,13 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 
 		if (smbchg_is_ta_charger(psy, current_limit)) {
 			pr_smb(PR_MISC, "Maybe is Ta charger, rerun APSD!\n");
+			if (chip->factory_mode &&
+				(chip->supply_type == POWER_SUPPLY_TYPE_USB ||
+				chip->supply_type == POWER_SUPPLY_TYPE_USB_CDP))
+			{
+				pr_err("SMB - Factory Kill Armed Remove\n");
+				chip->factory_cable = false;
+			}
 			smbchg_force_apsd(chip);
 			mutex_unlock(&chip->current_change_lock);
 			return;
@@ -7166,7 +7178,12 @@ static ssize_t force_demo_mode_store(struct device *dev,
 		return -ENODEV;
 	}
 
-	the_chip->demo_mode = (mode) ? true : false;
+	the_chip->stepchg_state_holdoff = 0;
+
+	if ((mode >= 35) && (mode <= 80))
+		the_chip->demo_mode = mode;
+	else
+		the_chip->demo_mode = 35;
 
 	return r ? r : count;
 }
@@ -7182,7 +7199,7 @@ static ssize_t force_demo_mode_show(struct device *dev,
 		return -ENODEV;
 	}
 
-	state = (the_chip->demo_mode) ? 1 : 0;
+	state = the_chip->demo_mode;
 
 	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
 }
@@ -7226,6 +7243,48 @@ static ssize_t factory_image_mode_show(struct device *dev,
 	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
 }
 
+static ssize_t force_max_chrg_temp_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long mode;
+
+	r = kstrtoul(buf, 0, &mode);
+	if (r) {
+		pr_err("Invalid max temp value = %lu\n", mode);
+		return -EINVAL;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		return -ENODEV;
+	}
+
+	if ((mode >= MIN_MAX_TEMP_C) && (mode <= MAX_TEMP_C))
+		the_chip->max_chrg_temp = mode;
+	else
+		the_chip->max_chrg_temp = MAX_TEMP_C;
+
+	return r ? r : count;
+}
+
+static ssize_t force_max_chrg_temp_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	int state;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		return -ENODEV;
+	}
+
+	state = the_chip->max_chrg_temp;
+
+	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
 static DEVICE_ATTR(factory_image_mode, 0644,
 		factory_image_mode_show,
 		factory_image_mode_store);
@@ -7233,6 +7292,10 @@ static DEVICE_ATTR(factory_image_mode, 0644,
 static DEVICE_ATTR(force_demo_mode, 0644,
 		force_demo_mode_show,
 		force_demo_mode_store);
+
+static DEVICE_ATTR(force_max_chrg_temp, 0644,
+		force_max_chrg_temp_show,
+		force_max_chrg_temp_store);
 
 static ssize_t force_chg_usb_suspend_store(struct device *dev,
 					struct device_attribute *attr,
@@ -7814,9 +7877,15 @@ static void smbchg_check_temp_state(struct smbchg_chip *chip, int batt_temp)
 {
 	int hotspot;
 	int temp_state = POWER_SUPPLY_HEALTH_GOOD;
+	int max_temp = 0;
 
 	if (!chip)
 		return;
+
+	if (chip->max_chrg_temp >= MIN_MAX_TEMP_C)
+		max_temp = chip->max_chrg_temp;
+	else
+		max_temp = chip->hot_temp_c;
 
 	mutex_lock(&chip->check_temp_lock);
 
@@ -7832,7 +7901,7 @@ static void smbchg_check_temp_state(struct smbchg_chip *chip, int batt_temp)
 	}
 
 	if (chip->temp_state == POWER_SUPPLY_HEALTH_WARM) {
-		if (batt_temp >= chip->hot_temp_c)
+		if (batt_temp >= max_temp)
 			/* Warm to Hot */
 			temp_state = POWER_SUPPLY_HEALTH_OVERHEAT;
 		else if (batt_temp <=
@@ -7884,8 +7953,7 @@ static void smbchg_check_temp_state(struct smbchg_chip *chip, int batt_temp)
 			/* Stay Cold */
 			temp_state = POWER_SUPPLY_HEALTH_COLD;
 	} else if (chip->temp_state == POWER_SUPPLY_HEALTH_OVERHEAT) {
-		if (batt_temp <=
-		    chip->hot_temp_c - HYSTERISIS_DEGC)
+		if (batt_temp <= max_temp - HYSTERISIS_DEGC)
 			/* Hot to Warm */
 			temp_state = POWER_SUPPLY_HEALTH_WARM;
 		else
@@ -8067,7 +8135,6 @@ void update_charging_limit_modes(struct smbchg_chip *chip,
 #define STEPCHG_ONE_FV_COMP 40
 #define STEPCHG_FULL_FV_COMP 100
 #define STEPCHG_CURR_ADJ 200
-#define DEMO_MODE_MAX_SOC 35
 #define DEMO_MODE_HYS_SOC 5
 #define HYST_STEP_MV 50
 static void smbchg_heartbeat_work(struct work_struct *work)
@@ -8104,18 +8171,44 @@ static void smbchg_heartbeat_work(struct work_struct *work)
 	prev_step = chip->stepchg_state;
 
 	if (chip->demo_mode) {
-		chip->stepchg_state = STEP_NONE;
-		dev_warn(chip->dev, "Battery in Demo Mode charging Limited\n");
+		static int demo_full_soc = 100;
+		bool voltage_full = false;
+
+		if (batt_ma < 0)
+			batt_ma *= -1;
 		if ((!!!(chip->usb_suspended & REASON_DEMO)) &&
-		    (batt_soc >= DEMO_MODE_MAX_SOC)) {
+		    ((batt_mv + HYST_STEP_MV) >= DEMO_MODE_VOLTAGE) &&
+		    (batt_ma <= chip->stepchg_iterm_ma) &&
+		    (chip->allowed_fastchg_current_ma >=
+		     chip->stepchg_iterm_ma)) {
+			if (chip->stepchg_state_holdoff >= 2) {
+				voltage_full = true;
+				chip->stepchg_state_holdoff = 0;
+			} else
+				chip->stepchg_state_holdoff++;
+		} else {
+			chip->stepchg_state_holdoff = 0;
+		}
+
+		chip->stepchg_state = STEP_NONE;
+		pr_warn("Battery in Demo Mode charging Limited per%d\n",
+			 chip->demo_mode);
+		if ((!!!(chip->usb_suspended & REASON_DEMO)) &&
+		    ((batt_soc >= chip->demo_mode) ||
+		     voltage_full)) {
+			demo_full_soc = batt_soc;
 			smbchg_usb_en(chip, false, REASON_DEMO);
 			smbchg_dc_en(chip, false, REASON_DEMO);
+			pr_warn("Battery in Demo Mode charging false\n");
 		} else if (!!(chip->usb_suspended & REASON_DEMO) &&
 			(batt_soc <=
-			 (DEMO_MODE_MAX_SOC - DEMO_MODE_HYS_SOC))) {
+			 (demo_full_soc - DEMO_MODE_HYS_SOC))) {
 			smbchg_usb_en(chip, true, REASON_DEMO);
 			smbchg_dc_en(chip, true, REASON_DEMO);
+			chip->stepchg_state_holdoff = 0;
+			pr_warn("Battery in Demo Mode charging true\n");
 		}
+		smbchg_set_temp_chgpath(chip, chip->temp_state);
 	} else if ((chip->stepchg_state == STEP_NONE) && (chip->usb_present)) {
 		if (batt_mv >= chip->stepchg_voltage_mv)
 			chip->stepchg_state = STEP_ONE;
@@ -8133,9 +8226,8 @@ static void smbchg_heartbeat_work(struct work_struct *work)
 		    chip->stepchg_current_ma)
 			batt_ma -= STEPCHG_CURR_ADJ;
 
-		if ((batt_ma <= chip->stepchg_current_ma) &&
-		    (chip->allowed_fastchg_current_ma >=
-		     chip->stepchg_current_ma))
+		if (batt_ma <= min(chip->stepchg_current_ma,
+		    chip->allowed_fastchg_current_ma))
 			if (chip->stepchg_state_holdoff >= 2) {
 					chip->stepchg_state = STEP_ONE;
 					chip->stepchg_state_holdoff = 0;
@@ -8148,9 +8240,8 @@ static void smbchg_heartbeat_work(struct work_struct *work)
 		   ((batt_mv + HYST_STEP_MV) >=
 		    chip->stepchg_max_voltage_mv)) {
 		batt_ma *= -1;
-		if ((batt_ma <= chip->stepchg_taper_ma) &&
-		    (chip->allowed_fastchg_current_ma >=
-		     chip->stepchg_taper_ma))
+		if (batt_ma <= min(chip->stepchg_taper_ma,
+		    chip->allowed_fastchg_current_ma))
 			if (chip->stepchg_state_holdoff >= 2) {
 				chip->stepchg_state = STEP_TAPER;
 				chip->stepchg_state_holdoff = 0;
@@ -8382,13 +8473,14 @@ static int smbchg_probe(struct spmi_device *spmi)
 	chip->spmi = spmi;
 	chip->dev = &spmi->dev;
 	chip->usb_psy = usb_psy;
-	chip->demo_mode = false;
+	chip->demo_mode = 0;
 	chip->hvdcp_det_done = false;
 	chip->is_factory_image = false;
 	chip->charging_limit_modes = CHARGING_LIMIT_UNKNOWN;
 	chip->test_mode_soc = DEFAULT_TEST_MODE_SOC;
 	chip->test_mode_temp = DEFAULT_TEST_MODE_TEMP;
 	chip->test_mode = qpnp_smbcharger_test_mode();
+	chip->max_chrg_temp = 0;
 	if (chip->test_mode)
 		dev_warn(&spmi->dev, "Test Mode Enabled\n");
 	chip->is_weak_charger = false;
@@ -8521,6 +8613,13 @@ static int smbchg_probe(struct spmi_device *spmi)
 		goto unregister_dc_psy;
 	}
 
+	rc = device_create_file(chip->dev,
+				&dev_attr_force_max_chrg_temp);
+	if (rc) {
+		pr_err("couldn't create force_max_chrg_temp\n");
+		goto unregister_dc_psy;
+	}
+
 	if (chip->factory_mode) {
 		rc = device_create_file(chip->dev,
 					&dev_attr_force_chg_usb_suspend);
@@ -8612,6 +8711,8 @@ static int smbchg_remove(struct spmi_device *spmi)
 
 	device_remove_file(chip->dev,
 			   &dev_attr_force_demo_mode);
+	device_remove_file(chip->dev,
+			   &dev_attr_force_max_chrg_temp);
 	if (chip->factory_mode) {
 		device_remove_file(chip->dev,
 				   &dev_attr_force_chg_usb_suspend);
