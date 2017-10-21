@@ -1373,7 +1373,12 @@ static void ack_dynirq(struct irq_data *data)
 	if (!VALID_EVTCHN(evtchn))
 		return;
 
+<<<<<<< HEAD
 	if (unlikely(irqd_is_setaffinity_pending(data))) {
+=======
+	if (unlikely(irqd_is_setaffinity_pending(data)) &&
+	    likely(!irqd_irq_disabled(data))) {
+>>>>>>> v3.18.35
 		int masked = test_and_set_mask(evtchn);
 
 		clear_evtchn(evtchn);
