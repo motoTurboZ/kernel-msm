@@ -5,7 +5,7 @@ export ARCH=arm64
 
 if [ ! -f $KERNELDIR/.config ];
 then
-	make defconfig TurboZ_defconfig
+	make defconfig TurboZ_CustomRom_7.1.1_defconfig
 fi
 
 . $KERNELDIR/.config
