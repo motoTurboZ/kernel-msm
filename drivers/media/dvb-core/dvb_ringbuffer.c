@@ -66,7 +66,6 @@ int dvb_ringbuffer_empty(struct dvb_ringbuffer *rbuf)
 	 * for memory barriers also see Documentation/circular-buffers.txt
 	 */
 	return (rbuf->pread == smp_load_acquire(&rbuf->pwrite));
->>>>>>> 5d3e4a337485... [media] media: dvb_ringbuffer: Add memory barriers
 }
 
 
