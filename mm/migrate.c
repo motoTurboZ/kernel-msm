@@ -38,6 +38,8 @@
 #include <linux/gfp.h>
 #include <linux/balloon_compaction.h>
 #include <linux/mmu_notifier.h>
+#include <linux/compaction.h>
+#include <trace/events/kmem.h>
 #include <linux/ptrace.h>
 
 #include <asm/tlbflush.h>
