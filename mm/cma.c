@@ -74,10 +74,10 @@ static unsigned long cma_bitmap_aligned_offset(const struct cma *cma,
 		>> cma->order_per_bit;
 }
 
-static unsigned long cma_bitmap_maxno(struct cma *cma)
+/*static unsigned long cma_bitmap_maxno(struct cma *cma)
 {
 	return cma->count >> cma->order_per_bit;
-}
+}*/
 
 static unsigned long cma_bitmap_pages_to_bits(const struct cma *cma,
 					      unsigned long pages)
